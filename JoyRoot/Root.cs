@@ -32,7 +32,7 @@ namespace JoyRoot
         }
     }
 
-    class Root
+    class RootDevice
     {
         public enum Model {
             rt0=0,
@@ -41,18 +41,22 @@ namespace JoyRoot
 
         public Model model;
 
-        static string RootIdentifierService = "48c5d828-ac2a-442d-97a3-0c9822b04979";
-        static string DeviceInfomationService = "0000180a-0000-1000-8000-00805f9b34fb";
-        static string SerialNumberCharacteristic = "00002a25-0000-1000-8000-00805f9b34fb";
-        static string FirwareVersionCharacteristic = "00002a26-0000-1000-8000-00805f9b34fb";
-        static string HardwareVersionCharacteristic = "00002a27-0000-1000-8000-00805f9b34fb";
-        static string ManufacturerCharacteristic = "00002a29-0000-1000-8000-00805f9b34fb";
-        static string RobotStateCharacteristic = "00008bb6-0000-1000-8000-00805f9b34fb";
-        static string UARTService = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-        static string RxCharacteristic = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-        static string TxCharacteristic = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+        public static readonly string RootIdentifierService = "48c5d828-ac2a-442d-97a3-0c9822b04979";
+        public static readonly string DeviceInfomationService = "0000180a-0000-1000-8000-00805f9b34fb";
+        public static readonly string SerialNumberCharacteristic = "00002a25-0000-1000-8000-00805f9b34fb";
+        public static readonly string FirwareVersionCharacteristic = "00002a26-0000-1000-8000-00805f9b34fb";
+        public static readonly string HardwareVersionCharacteristic = "00002a27-0000-1000-8000-00805f9b34fb";
+        public static readonly string ManufacturerCharacteristic = "00002a29-0000-1000-8000-00805f9b34fb";
+        public static readonly string RobotStateCharacteristic = "00008bb6-0000-1000-8000-00805f9b34fb";
+        public static readonly string UARTService = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        public static readonly string RxCharacteristic = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        public static readonly string TxCharacteristic = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 
-        public void sendCommand(string cmd) {
+        public RootDevice(Model m=Model.rt1) {
+
+        }
+
+        public void getCommand(string cmd) {
 
         }
 
@@ -82,7 +86,6 @@ namespace JoyRoot
         public void navigate(int x, int y) {
 
         }
-
 
     }
 }

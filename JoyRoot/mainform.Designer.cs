@@ -34,6 +34,7 @@ namespace JoyRoot
             this.btnDown = new System.Windows.Forms.Button();
             this.btnRight = new System.Windows.Forms.Button();
             this.btnConnect = new System.Windows.Forms.Button();
+            this.listBox1 = new System.Windows.Forms.ListBox();
             this.SuspendLayout();
             // 
             // btnUP
@@ -75,18 +76,29 @@ namespace JoyRoot
             // 
             // btnConnect
             // 
-            this.btnConnect.Location = new System.Drawing.Point(92, 65);
+            this.btnConnect.Location = new System.Drawing.Point(949, 45);
             this.btnConnect.Name = "btnConnect";
             this.btnConnect.Size = new System.Drawing.Size(222, 65);
             this.btnConnect.TabIndex = 4;
-            this.btnConnect.Text = "Connect";
+            this.btnConnect.Text = "Scan";
             this.btnConnect.UseVisualStyleBackColor = true;
+            this.btnConnect.Click += new System.EventHandler(this.btnConnect_Click);
+            // 
+            // listBox1
+            // 
+            this.listBox1.FormattingEnabled = true;
+            this.listBox1.ItemHeight = 25;
+            this.listBox1.Location = new System.Drawing.Point(949, 131);
+            this.listBox1.Name = "listBox1";
+            this.listBox1.Size = new System.Drawing.Size(685, 929);
+            this.listBox1.TabIndex = 5;
             // 
             // mainform
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(12F, 25F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1256, 692);
+            this.ClientSize = new System.Drawing.Size(1882, 1160);
+            this.Controls.Add(this.listBox1);
             this.Controls.Add(this.btnConnect);
             this.Controls.Add(this.btnRight);
             this.Controls.Add(this.btnDown);
@@ -106,6 +118,7 @@ namespace JoyRoot
         private System.Windows.Forms.Button btnDown;
         private System.Windows.Forms.Button btnRight;
         private System.Windows.Forms.Button btnConnect;
+        private System.Windows.Forms.ListBox listBox1;
     }
 }
 
