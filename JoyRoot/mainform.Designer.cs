@@ -35,13 +35,19 @@ namespace JoyRoot
             this.btnRight = new System.Windows.Forms.Button();
             this.btnConnect = new System.Windows.Forms.Button();
             this.listBox1 = new System.Windows.Forms.ListBox();
+            this.label1 = new System.Windows.Forms.Label();
+            this.colorDialog1 = new System.Windows.Forms.ColorDialog();
+            this.pictureBox1 = new System.Windows.Forms.PictureBox();
+            this.btnStop = new System.Windows.Forms.Button();
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             this.SuspendLayout();
             // 
             // btnUP
             // 
-            this.btnUP.Location = new System.Drawing.Point(470, 169);
+            this.btnUP.Location = new System.Drawing.Point(234, 81);
+            this.btnUP.Margin = new System.Windows.Forms.Padding(2);
             this.btnUP.Name = "btnUP";
-            this.btnUP.Size = new System.Drawing.Size(109, 107);
+            this.btnUP.Size = new System.Drawing.Size(54, 56);
             this.btnUP.TabIndex = 0;
             this.btnUP.Text = "^";
             this.btnUP.UseVisualStyleBackColor = true;
@@ -49,36 +55,43 @@ namespace JoyRoot
             // 
             // btnLeft
             // 
-            this.btnLeft.Location = new System.Drawing.Point(368, 273);
+            this.btnLeft.Location = new System.Drawing.Point(177, 139);
+            this.btnLeft.Margin = new System.Windows.Forms.Padding(2);
             this.btnLeft.Name = "btnLeft";
-            this.btnLeft.Size = new System.Drawing.Size(109, 102);
+            this.btnLeft.Size = new System.Drawing.Size(54, 56);
             this.btnLeft.TabIndex = 1;
             this.btnLeft.Text = "<";
             this.btnLeft.UseVisualStyleBackColor = true;
+            this.btnLeft.Click += new System.EventHandler(this.btnLeft_Click);
             // 
             // btnDown
             // 
-            this.btnDown.Location = new System.Drawing.Point(470, 381);
+            this.btnDown.Location = new System.Drawing.Point(234, 197);
+            this.btnDown.Margin = new System.Windows.Forms.Padding(2);
             this.btnDown.Name = "btnDown";
-            this.btnDown.Size = new System.Drawing.Size(109, 102);
+            this.btnDown.Size = new System.Drawing.Size(54, 56);
             this.btnDown.TabIndex = 2;
             this.btnDown.Text = "v";
             this.btnDown.UseVisualStyleBackColor = true;
+            this.btnDown.Click += new System.EventHandler(this.btnDown_Click);
             // 
             // btnRight
             // 
-            this.btnRight.Location = new System.Drawing.Point(585, 273);
+            this.btnRight.Location = new System.Drawing.Point(291, 139);
+            this.btnRight.Margin = new System.Windows.Forms.Padding(2);
             this.btnRight.Name = "btnRight";
-            this.btnRight.Size = new System.Drawing.Size(109, 102);
+            this.btnRight.Size = new System.Drawing.Size(54, 56);
             this.btnRight.TabIndex = 3;
             this.btnRight.Text = ">";
             this.btnRight.UseVisualStyleBackColor = true;
+            this.btnRight.Click += new System.EventHandler(this.btnRight_Click);
             // 
             // btnConnect
             // 
-            this.btnConnect.Location = new System.Drawing.Point(949, 45);
+            this.btnConnect.Location = new System.Drawing.Point(474, 23);
+            this.btnConnect.Margin = new System.Windows.Forms.Padding(2);
             this.btnConnect.Name = "btnConnect";
-            this.btnConnect.Size = new System.Drawing.Size(222, 65);
+            this.btnConnect.Size = new System.Drawing.Size(111, 34);
             this.btnConnect.TabIndex = 4;
             this.btnConnect.Text = "Scan";
             this.btnConnect.UseVisualStyleBackColor = true;
@@ -87,27 +100,68 @@ namespace JoyRoot
             // listBox1
             // 
             this.listBox1.FormattingEnabled = true;
-            this.listBox1.ItemHeight = 25;
-            this.listBox1.Location = new System.Drawing.Point(949, 131);
+            this.listBox1.Location = new System.Drawing.Point(474, 68);
+            this.listBox1.Margin = new System.Windows.Forms.Padding(2);
             this.listBox1.Name = "listBox1";
-            this.listBox1.Size = new System.Drawing.Size(685, 929);
+            this.listBox1.Size = new System.Drawing.Size(257, 524);
             this.listBox1.TabIndex = 5;
+            this.listBox1.DoubleClick += new System.EventHandler(this.listBox1_DoubleClick);
+            // 
+            // label1
+            // 
+            this.label1.AutoSize = true;
+            this.label1.Location = new System.Drawing.Point(12, 579);
+            this.label1.Name = "label1";
+            this.label1.Size = new System.Drawing.Size(35, 13);
+            this.label1.TabIndex = 6;
+            this.label1.Text = "label1";
+            // 
+            // colorDialog1
+            // 
+            this.colorDialog1.SolidColorOnly = true;
+            // 
+            // pictureBox1
+            // 
+            this.pictureBox1.BackColor = System.Drawing.Color.Black;
+            this.pictureBox1.Location = new System.Drawing.Point(65, 407);
+            this.pictureBox1.Name = "pictureBox1";
+            this.pictureBox1.Size = new System.Drawing.Size(31, 28);
+            this.pictureBox1.TabIndex = 7;
+            this.pictureBox1.TabStop = false;
+            this.pictureBox1.Click += new System.EventHandler(this.pictureBox1_Click);
+            // 
+            // btnStop
+            // 
+            this.btnStop.Location = new System.Drawing.Point(234, 139);
+            this.btnStop.Name = "btnStop";
+            this.btnStop.Size = new System.Drawing.Size(54, 56);
+            this.btnStop.TabIndex = 8;
+            this.btnStop.Text = "X";
+            this.btnStop.UseVisualStyleBackColor = true;
+            this.btnStop.Click += new System.EventHandler(this.btnStop_Click);
             // 
             // mainform
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(12F, 25F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1882, 1160);
+            this.ClientSize = new System.Drawing.Size(780, 612);
+            this.Controls.Add(this.btnStop);
+            this.Controls.Add(this.pictureBox1);
+            this.Controls.Add(this.label1);
             this.Controls.Add(this.listBox1);
             this.Controls.Add(this.btnConnect);
             this.Controls.Add(this.btnRight);
             this.Controls.Add(this.btnDown);
             this.Controls.Add(this.btnLeft);
             this.Controls.Add(this.btnUP);
+            this.Margin = new System.Windows.Forms.Padding(2);
             this.Name = "mainform";
             this.Text = "Form1";
+            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.mainform_FormClosing);
             this.Load += new System.EventHandler(this.mainform_Load);
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).EndInit();
             this.ResumeLayout(false);
+            this.PerformLayout();
 
         }
 
@@ -119,6 +173,10 @@ namespace JoyRoot
         private System.Windows.Forms.Button btnRight;
         private System.Windows.Forms.Button btnConnect;
         private System.Windows.Forms.ListBox listBox1;
+        private System.Windows.Forms.Label label1;
+        private System.Windows.Forms.ColorDialog colorDialog1;
+        private System.Windows.Forms.PictureBox pictureBox1;
+        private System.Windows.Forms.Button btnStop;
     }
 }
 
