@@ -1,16 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
 using Windows.Devices.Bluetooth;
+using Windows.Devices.Bluetooth.GenericAttributeProfile;
+using System.Diagnostics;
+using System.Threading.Tasks;
+using Windows.Storage.Streams;
 
 namespace JoyRoot
 {
     class RootDevice
     {
-        public enum Model {
+        public enum ModelType {
             RT0=0,
             RT1=1,
             UNKNOWN=2
@@ -36,43 +37,88 @@ namespace JoyRoot
         public static readonly Guid guidTxCharacteristic              = Guid.Parse("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
         #endregion
 
-        public Model model;        
-        public ulong BTAddress;
-        public object BTDevice;
-
-        private Dictionary<string , object> BTcharacteristics = new Dictionary<string, object>();
-        private Dictionary<string , object> BTServices = new Dictionary<string, object>();
-
-
-        public void setCharacteristic(Guid guid, object characteristic)
-        {
-            BTcharacteristics[guid.ToString()] = characteristic;
+        public ModelType Model;
+        public ulong Address {
+            private set;
+            get;
         }
 
-        public object getCharacteristic(Guid guid)
-        {
-            if (BTcharacteristics.ContainsKey(guid.ToString()))
-                return BTcharacteristics[guid.ToString()];
-            else
-                return null;
+        #region BT connection
+        private BluetoothLEDevice _device;
+        public BluetoothLEDevice Bluetooth {
+            set {
+                _device = value;
+                _device.ConnectionStatusChanged += ConnectionStatusChanged;
+            }
+            get {
+                return _device;
+            }
         }
 
-        public void setService(Guid guid, object service)
-        {
-            BTServices[guid.ToString()] = service;
+        public async Task<bool> isAvailible() {
+            if (Bluetooth == null) {
+                Debug.WriteLine("seeing root missing, tring to reconnect");
+                return await query(Address);
+            } else {
+                Debug.WriteLine("seeing root availible");
+                return true;
+            }
         }
 
-        public object getService(Guid guid)
-        {
-            if (BTServices.ContainsKey(guid.ToString()))
-                return BTServices[guid.ToString()];
-            else
-                return null;
+        public bool isConnected {
+            get {                
+                return Bluetooth?.ConnectionStatus == BluetoothConnectionStatus.Connected;
+            }
         }
 
-        public string SerialNumber;
-        public string HWVersion;
-        public string FWVersion;
+        public event EventHandler Connected;
+        public event EventHandler Disconnected;
+
+        private void ConnectionStatusChanged(BluetoothLEDevice sender, object args) {
+            if (sender.ConnectionStatus == BluetoothConnectionStatus.Connected) {
+                Connected?.Invoke(this, new EventArgs());
+            } else if (sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected) {
+                Disconnected?.Invoke(this, new EventArgs());
+            }
+        }
+
+        private Dictionary<Guid , GattCharacteristic> BTcharacteristics = new Dictionary<Guid, GattCharacteristic>();
+        private Dictionary<Guid , GattDeviceService> BTServices = new Dictionary<Guid, GattDeviceService>();
+
+        public async Task<bool> query(ulong address) {
+            Address = address;
+            Bluetooth = await BluetoothLEDevice.FromBluetoothAddressAsync(address);
+            return (Bluetooth != null);
+        }
+
+        public async void connect() {
+            SerialNumber = await readGattCharString(guidDeviceInfomationService, guidSerialNumberCharacteristic);
+            FWVersion = await readGattCharString(guidDeviceInfomationService, guidFirwareVersionCharacteristic);
+            HWVersion = await readGattCharString(guidDeviceInfomationService, guidHardwareVersionCharacteristic);
+        }
+
+        public void disconnect() {            
+            _device.ConnectionStatusChanged -= ConnectionStatusChanged;
+            _device?.Dispose();
+            _device = null;
+            GC.Collect();
+        }
+
+        #endregion
+
+        #region Root General info
+        public string SerialNumber {
+            get;
+            private set;
+        }
+        public string HWVersion { 
+            get; 
+            private set; 
+        }
+        public string FWVersion {
+            get;
+            private set;
+        }
 
         public int battery;
 
@@ -80,17 +126,19 @@ namespace JoyRoot
         {
             get
             {
-                return BTInfo.Name;
+                Debug.WriteLine("getting name");
+                if (Bluetooth== null) {
+                    Debug.WriteLine("BT is null");
+                } else {
+                    Debug.WriteLine("Got name this time:" + Bluetooth.DeviceInformation.Name);
+                }
+                return Bluetooth?.DeviceInformation.Name;
             }
         }
 
-        public DeviceInformation BTInfo
-        {
-            private get;
-            set;
-        }
+        #endregion
 
-        public RootDevice(Model m=Model.RT1) {
+        public RootDevice(ModelType m=ModelType.RT1) {
 
         }
 
@@ -98,35 +146,49 @@ namespace JoyRoot
         {
             if (sModel=="RT0")
             {
-                model = Model.RT0;
+                Model = ModelType.RT0;
             } else
             {
-                model = Model.RT1;
+                Model = ModelType.RT1;
             }
         }
 
-        public void getCommand(string cmd) {
-
+        // Commands
+        public async void sendCmd(RootCommand cmd) {
+            if (await isAvailible()) {
+                var rxCh = await getGattCharacteristic(guidUARTService, guidRxCharacteristic);
+                if (rxCh != null) {
+                    DataWriter dw = new DataWriter();
+                    dw.WriteBytes(cmd.pack());
+                    await rxCh.WriteValueWithResultAsync(dw.DetachBuffer());
+                }
+            }
         }
 
         public void moveForward() {
-
+            sendCmd(RootCommand.moveForwardCmd);
         }
 
         public void moveBackward() {
-
+            sendCmd(RootCommand.moveBackwardCmd);
         }
 
-        public void turnLeft(int angle = 90) {
-
+        public void stopMove() {
+            sendCmd(RootCommand.stopMoveCmd);
         }
 
-        public void turnRight(int angle = 90) {
-
+        public void turnLeft(int angle = -1) {
+            if (angle == -1) // unlimited
+                sendCmd(RootCommand.turnLeftCmd);
         }
 
-        public void setLed(int type) {
-            
+        public void turnRight(int angle = -1) {
+            if (angle == -1) // unlimited
+                sendCmd(RootCommand.turnRightCmd);
+        }
+
+        public void setLed(System.Drawing.Color color, RootCommand.LEDState ledstate = RootCommand.LEDState.On) {
+            sendCmd(RootCommand.getSetLEDCmd(color.R, color.G, color.B, ledstate));
         }
 
         public void resetNavigate() {
@@ -136,5 +198,58 @@ namespace JoyRoot
 
         }
 
+        public event EventHandler ResponseRecieved;
+        public event EventHandler StatusChanged;
+
+        private async Task<GattDeviceService> getGattServices(Guid ServiceGuid) {
+            if (BTServices.ContainsKey(ServiceGuid)) {
+                return BTServices[ServiceGuid];
+            }
+            GattDeviceServicesResult result = await _device.GetGattServicesForUuidAsync(ServiceGuid);
+            if (result.Status == GattCommunicationStatus.Success) {
+                BTServices.Add(ServiceGuid, result.Services[0]);
+                return result.Services[0];
+            }  else
+                return null;
+        }
+
+        private async Task<GattCharacteristic> getGattCharacteristic(Guid guid) {
+            if (BTcharacteristics.ContainsKey(guid)) {
+                return BTcharacteristics[guid];
+            }
+            var result = await _device.GetGattServicesAsync();
+            foreach(var serv in result.Services) {
+                var cresult = await serv.GetCharacteristicsForUuidAsync(guid);
+                if (cresult.Status == GattCommunicationStatus.Success) {
+                    BTcharacteristics.Add(guid, cresult.Characteristics[0]);
+                    return cresult.Characteristics[0];
+                }
+            }
+            return null;
+        }
+
+        private async Task<GattCharacteristic> getGattCharacteristic(Guid ServiceGuid, Guid guid) {
+            if (BTcharacteristics.ContainsKey(guid)) {
+                return BTcharacteristics[guid];
+            }
+            GattDeviceService serv = await getGattServices(ServiceGuid);
+            if (await serv?.RequestAccessAsync() == DeviceAccessStatus.Allowed) {
+                var cresult = await serv.GetCharacteristicsForUuidAsync(guid);
+                if (cresult.Status == GattCommunicationStatus.Success) {
+                    BTcharacteristics.Add(guid, cresult.Characteristics[0]);
+                    return cresult.Characteristics[0];
+                }
+            }
+            return null;
+        }
+
+        public async Task<string> readGattCharString(Guid service, Guid guid) {
+            var cha = await getGattCharacteristic(service, guid);
+            if (cha != null) {
+                var gattval = await cha.ReadValueAsync();
+                return DataReader.FromBuffer(gattval.Value).ReadString(gattval.Value.Length);
+            } else 
+                return "";
+        }
     }
 }
