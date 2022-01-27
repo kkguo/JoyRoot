@@ -38,12 +38,12 @@ namespace JoyRoot
         #endregion
 
         public ModelType Model;
+
+        #region BT connection
         public ulong Address {
             private set;
             get;
         }
-
-        #region BT connection
         private BluetoothLEDevice _device;
         public BluetoothLEDevice Bluetooth {
             set {
@@ -59,8 +59,7 @@ namespace JoyRoot
             if (Bluetooth == null) {
                 Debug.WriteLine("seeing root missing, tring to reconnect");
                 return await query(Address);
-            } else {
-                Debug.WriteLine("seeing root availible");
+            } else {                
                 return true;
             }
         }
@@ -198,9 +197,6 @@ namespace JoyRoot
 
         }
 
-        public event EventHandler ResponseRecieved;
-        public event EventHandler StatusChanged;
-
         private async Task<GattDeviceService> getGattServices(Guid ServiceGuid) {
             if (BTServices.ContainsKey(ServiceGuid)) {
                 return BTServices[ServiceGuid];
@@ -251,5 +247,66 @@ namespace JoyRoot
             } else 
                 return "";
         }
+
+        private async void subscribeUartTx() {
+            var cha = await getGattCharacteristic(guidUARTService, guidTxCharacteristic);
+            var status = await cha.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Indicate);
+            if (status == GattCommunicationStatus.Success) {
+                cha.ValueChanged += UARTTx_Recieved;
+            }
+        }
+
+        #region Response from robot
+        public class RootEventArgs : EventArgs
+        {
+            public byte[] packet;
+            public RootEventArgs(byte[] bytes) : base() {
+                packet = bytes;
+            }
+        }
+
+        public delegate void RootEventHandler(RootDevice root, RootEventArgs e);
+
+        public event RootEventHandler ResponseRecieved;
+        public event RootEventHandler StatusChanged;
+
+        public event RootEventHandler MoveFinished;
+        public event RootEventHandler BumperEvent;
+        public event RootEventHandler MotorStallEvent;
+
+        private void UARTTx_Recieved(GattCharacteristic sender, GattValueChangedEventArgs args) {                
+            byte[] bytes = new byte[args.CharacteristicValue.Length];
+            DataReader.FromBuffer(args.CharacteristicValue).ReadBytes(bytes);
+            var cmd = new RootCommand(bytes);            
+            switch (bytes[0]) { // Dev
+                case 1:
+                    switch(bytes[1]) { // cmd
+                        case 8:
+                        case 12:
+                        case 17:
+                        case 27:
+                            MoveFinished.Invoke(this, new RootEventArgs(bytes));
+                            break;
+                        case 16:
+                            ResponseRecieved.Invoke(this, new RootEventArgs(bytes));
+                            break;
+                        case 29:
+                            MotorStallEvent.Invoke(this, new RootEventArgs(bytes));
+                            break;
+                    }                    
+                    break;
+                case 2:
+                    MoveFinished(this, new RootEventArgs(bytes));
+                    break;
+                case 12: // Bumper
+                    BumperEvent.Invoke(this, new RootEventArgs(bytes));
+                    break;
+                default:
+                    ResponseRecieved.Invoke(this, new RootEventArgs(bytes));
+                    break;            
+            }
+        }
+
+        #endregion
     }
 }

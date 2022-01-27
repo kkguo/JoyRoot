@@ -88,17 +88,6 @@ namespace JoyRoot
             btnStop.Enabled = true;
         }
 
-        private async void subscribeTX(RootDevice root)
-        {
-            //var ser = await getRootService(root, RootDevice.guidUARTService);
-            //var cha = await getRootCharacteristic(root, RootDevice.guidUARTService, RootDevice.guidTxCharacteristic);
-            //var status = await cha.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Indicate);
-            //if (status == GattCommunicationStatus.Success)
-            //{
-            //    cha.ValueChanged += Characteristic_ValueChanged;
-            //}
-        }
-
         private async void Characteristic_ValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
         {
 
