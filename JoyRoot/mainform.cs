@@ -12,13 +12,14 @@ using System.Diagnostics;
 namespace JoyRoot
 {
     public partial class mainform : Form {
-        private Dictionary<ulong, RootDevice> rootList = new Dictionary<ulong, RootDevice>();
-
         KeyboardListener KeyboardListener = new KeyboardListener();
 
-        public mainform()
-        {
+        public mainform() {
             InitializeComponent();
+            var header = new ColumnHeader();
+            header.Width = listAvailibleRoot.Width;
+            listAvailibleRoot.Columns.Add(header);
+            //listAvailibleRoot.AutoResizeColumns(ColumnHeaderAutoResizeStyle.ColumnContent);
         }
 
         private void mainform_Load(object sender, EventArgs e) {
@@ -26,57 +27,37 @@ namespace JoyRoot
             KeyboardListener.KeyUp += new RawKeyEventHandler(Keyboard_KeyUp);
         }
 
-        private void btnConnect_Click(object sender, EventArgs e)
-        {
-            scanAdvertisement();
+        private void btnConnect_Click(object sender, EventArgs e) {
+            RootDevice.DeviceFound += RootDevice_DeviceFound;
+            RootDevice.Scan();
         }
 
-
-        private void scanAdvertisement()
-        {
-            BluetoothLEAdvertisementWatcher watcher = new BluetoothLEAdvertisementWatcher();
-            watcher.Received += OnAdvertisementReceived;
-            watcher.Start();
+        private void RootDevice_DeviceFound(object sender, EventArgs e) {
+            RootDevice root = (RootDevice)sender;
+            root.AdvertiseUpdate += RootDevice_AdvertiseUpdate;
+            var newitem = new ListViewItem(" (" + root.Model.ToString() + ")");
+            newitem.Tag = root;
+            listAvailibleRoot.Invoke((MethodInvoker)delegate
+            {
+                listAvailibleRoot.Items.Add(newitem);
+            });
         }
 
-        private async void OnAdvertisementReceived(BluetoothLEAdvertisementWatcher watcher, BluetoothLEAdvertisementReceivedEventArgs eventArgs) {
-            RootDevice root;
-            if (rootList.ContainsKey(eventArgs.BluetoothAddress)) { // this device has been scanned
-                root = rootList[eventArgs.BluetoothAddress];                
-                if (await root.isAvailible()) { //still availible 
-                    return;
-                } else { // lost connect
-                    Debug.WriteLine("Seeing root disapear");
-                    Root_Disconnected(root, new EventArgs());
+        private void RootDevice_AdvertiseUpdate(object o, EventArgs e) {
+            listAvailibleRoot.Invoke((MethodInvoker)delegate
+            {
+                RootDevice root = (RootDevice)o;
+                foreach (ListViewItem item in listAvailibleRoot.Items) {
+                    if (item.Tag == root) {
+                        item.Text = root.Name + " (" + root.Model.ToString() + ") " + root.Battery + "%";
+                    }
                 }
-            } else if (eventArgs.Advertisement.ServiceUuids.Contains(RootDevice.guidRootIdentifierService)) {  // new device found                        
-                var mdata = eventArgs.Advertisement.GetManufacturerDataByCompanyId(RootDevice.ManufacturerID);
-                if (mdata.Count == 1) {
-                    byte[] tmp = new byte[mdata[0].Data.Length];
-                    string deviceType = DataReader.FromBuffer(mdata[0].Data).ReadString(3);
-                    root = new RootDevice(deviceType);
-                    await root.query(eventArgs.BluetoothAddress);
-                    root.Disconnected += Root_Disconnected;
-                    rootList.Add(eventArgs.BluetoothAddress, root);
-                    var newitem = new ListViewItem(root.Name + " (" + root.Model.ToString() + ")");
-                    Debug.WriteLine("found root:" + root.Name);
-                    newitem.Tag = root;
-                    listAvailibleRoot.Invoke((MethodInvoker)delegate
-                    {
-                        listAvailibleRoot.Items.Add(newitem);
-                    });
-                }
-
-            }
-        }
-
-        private void Root_Disconnected(object sender, EventArgs e) {
-            rootList.Remove(((RootDevice)sender).Address);
+            });
         }
 
         private async void connect(RootDevice root)
         {
-            root.connect();
+            await root.Connect();
             label1.Invoke((MethodInvoker)delegate {
                 label1.Text = root.SerialNumber;
             });
@@ -86,11 +67,6 @@ namespace JoyRoot
             btnLeft.Enabled = true;
             btnRight.Enabled = true;
             btnStop.Enabled = true;
-        }
-
-        private async void Characteristic_ValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
-        {
-
         }
 
         private void btnDown_Click(object sender, EventArgs e)
@@ -160,9 +136,9 @@ namespace JoyRoot
 
         private void mainform_FormClosing(object sender, FormClosingEventArgs e)
         {
-            foreach (var root in rootList.Values)
+            foreach (var root in RootDevice.deviceList.Values)
             {
-                root.disconnect();
+                root.Disconnect();
             }
         }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Drawing;
 
 namespace JoyRoot
 {
@@ -13,6 +14,7 @@ namespace JoyRoot
     /// 
     public class RootCommand
     {
+        #region enum
         public enum DeviceCode : byte
         {
             General = 0,
@@ -28,30 +30,48 @@ namespace JoyRoot
             TouchSensors = 17,
             CliffSensor = 20
         }
-        public enum GeneralCommand : byte
+        public enum RootDeviceCommand : UInt16
         {
-            GetVersion = 0,
-            SetName = 1,
-            GetName = 2,
-            StopNReset = 3,
-            Disconnect = 4,
-            EnableEvents = 5,
-            DisableEvents = 6,
-            GetEnabledEvents = 7,
-            GetSerialNumber = 8,
-            GetSKU = 9
+            GetVersion = 0x00,
+            SetName = 0x0100,
+            GetName = 0x0200,
+            StopNReset = 0x0300,
+            Disconnect = 0x0400,
+            EnableEvents = 0x0500,
+            DisableEvents = 0x600,
+            GetEnabledEvents = 0x700,
+            GetSerialNumber = 0x800,
+            GetSKU = 0x900,        
+            MotorSetSpeed = 0x401,
+            MotorSetLeftSpeed = 0x601,
+            MotorSetRightSpeed = 0x701,
+            MotorDriveDistance = 0x801,
+            MotorRotate = 0xC01,
+            MotorSetGravityCompensation = 0xD01,
+            MotorResetPosition = 0xF01,
+            MotorGetPosition = 0x1001,
+            MotorNavigateToPosition=0x1101,
+            MotorDriveArc = 0x1B01,
+            MarkerEraserSetPosition=0x0002,
+            LEDSetAnimation=0x0203,
+            ColorSensorGetData=0x0104,
+            SoundPlayNote=0x0005,
+            SoundStopSound=0x0105,
+            SoundSayPhrase=0x0405,
+            SoundPlaySweep=0x0505,
+            LightSensorGetValue=0x010D,
+            BatteryGetLevel=0x010E,
+            AccelerometerGet=0x0110
         }
-        public enum MotorsCommand : byte
+        public enum RootEventType : UInt16
         {
-            SetSpeed = 4,
-            SetLeftSpeed = 6,
-            SetRightSpeed = 7,
-            DriveDistance = 8,
-            Rotate = 12,
-            SetGravityCompensation = 13,
-            ResetPosition = 15,
-            GetPosition = 16,
-            DriveArc = 27
+            MotorStallEvent=0x1D01,
+            ColorSensorEvent=0x0204,
+            BumperEvent=0x000C,
+            LightEvent=0x000D,
+            BatteryLevelEvent=0x000E,
+            TouchSensorEvent=0x0011,
+            CliffEvent=0x0014
         }
         public enum PacketIDType : byte
         {
@@ -59,42 +79,36 @@ namespace JoyRoot
             Req,
             Evt
         }
-        public enum MarkerCommand : byte
-        {
-            SetPosition = 0,
-        }
+        #endregion
 
-        protected DeviceCode Device;
-        protected byte Command;
-
-        private static byte currCmdID = 0;
-        protected PacketIDType IDType = PacketIDType.Inc;
-        private byte idSet;
-        protected byte PacketID
-        {
-            get
-            {
-                if (IDType == PacketIDType.Inc)
-                {
-                    //return currCmdID++;
-                    return 0;
-                } else
-                {
-                    return idSet;
-                }
-            }
-            set
-            {
-                if (value == 0)
-                {
-                    currCmdID = 0;
-                } else
-                {
-                    idSet = value;
-                }
+        private DeviceCode Device;
+        private byte commandCode;
+        private UInt16 _devicecommand {
+            get {
+                return (UInt16)((commandCode << 8) + (byte)Device);
             }
         }
-        protected byte[] Payload = new byte[16];
+
+        public RootDeviceCommand DeviceCommand {
+            get {                
+                return (RootDeviceCommand)_devicecommand;
+            }
+        }
+        public RootEventType Event {
+            get {
+                return (RootEventType)_devicecommand;
+            }
+        }
+
+        public bool isEvent {
+            get {                
+                return Enum.IsDefined(typeof(RootEventType), _devicecommand);
+            }
+        }
+
+        private PacketIDType IDType = PacketIDType.Inc;
+        private byte PacketID = 0;
+        public byte[] Payload = new byte[16];
 
         protected byte checksum
         {
@@ -103,7 +117,7 @@ namespace JoyRoot
                 byte[] newbytes = new byte[19];
                 byte crc = 0;
                 newbytes[0] = (byte)Device;
-                newbytes[1] = Command;
+                newbytes[1] = commandCode;
                 newbytes[2] = PacketID;
                 Payload.CopyTo(newbytes, 3);
 
@@ -129,7 +143,7 @@ namespace JoyRoot
         {
             byte[] newbytes = new byte[20];
             newbytes[0] = (byte)Device;
-            newbytes[1] = Command;
+            newbytes[1] = commandCode;
             newbytes[2] = PacketID;
             Payload.CopyTo(newbytes, 3);
             newbytes[19] = checksum;
@@ -141,22 +155,24 @@ namespace JoyRoot
             return BitConverter.ToString(pack());
         }
 
-        public RootCommand() { }
-
+        private RootCommand() { }
+        public RootCommand(RootDeviceCommand cmd) {
+            byte[] bytes=BitConverter.GetBytes((UInt16)cmd);
+            Device = (DeviceCode)bytes[0];
+            commandCode = bytes[1];
+        }
         public RootCommand(byte[] bytes)
         {
             Device = (DeviceCode)bytes[0];
-            Command = bytes[1];
+            commandCode = bytes[1];
             PacketID = bytes[2];
             Payload = bytes.Skip(3).Take(16).ToArray();
         }
 
         #region Motor Command
-        public static RootCommand MoveCommand(Int32 left, Int32 right)
+        public static RootCommand getMoveCommand(Int32 left, Int32 right)
         {
-            RootCommand cmd = new RootCommand();
-            cmd.Device = DeviceCode.Motors;
-            cmd.Command = (byte)MotorsCommand.SetSpeed;
+            RootCommand cmd = new RootCommand(RootDeviceCommand.MotorSetSpeed);
             BitConverter.GetBytes(left).Reverse().ToArray().CopyTo(cmd.Payload, 0);
             BitConverter.GetBytes(right).Reverse().ToArray().CopyTo(cmd.Payload, 4);
             return cmd;
@@ -166,7 +182,7 @@ namespace JoyRoot
         {
             get
             {
-                return MoveCommand(0, 0);
+                return getMoveCommand(0, 0);
             }
         }
 
@@ -174,7 +190,7 @@ namespace JoyRoot
         {
             get
             {
-                return MoveCommand(100, 100);
+                return getMoveCommand(100, 100);
             }
         }
 
@@ -182,7 +198,7 @@ namespace JoyRoot
         {
             get
             {
-                return MoveCommand(-100, -100);
+                return getMoveCommand(-100, -100);
             }
         }
 
@@ -190,7 +206,7 @@ namespace JoyRoot
         {
             get
             {
-                return MoveCommand(-100, 100);
+                return getMoveCommand(-100, 100);
             }
         }
 
@@ -198,31 +214,27 @@ namespace JoyRoot
         {
             get
             {
-                return MoveCommand(100, -100);
+                return getMoveCommand(100, -100);
             }
         }
 
         public static RootCommand moveDistanceCmd(Int32 distance)
         {
-            RootCommand cmd = new RootCommand();
-            cmd.Device = DeviceCode.Motors;
-            cmd.Command = (byte)MotorsCommand.DriveDistance;
+            RootCommand cmd = new RootCommand(RootDeviceCommand.MotorDriveDistance);
             var bytes = BitConverter.GetBytes(distance);
             bytes.CopyTo(cmd.Payload, 0);
             return cmd;
         }
         #endregion
 
-        public static RootCommand MoveMarkerCmd()
+        public static RootCommand getMarkerEraserCmd(bool MarkerUp, bool EraserUp)
         {
-            RootCommand cmd = new RootCommand();
-            cmd.Device = DeviceCode.MarkerNEraser;
-            cmd.Command = (byte)MarkerCommand.SetPosition;
-            
+            RootCommand cmd = new RootCommand(RootDeviceCommand.MarkerEraserSetPosition);
+            cmd.Payload[3] = (byte)(MarkerUp ? (EraserUp ? 3 : 2):1);
             return cmd;
         }
 
-        public enum LEDState : byte
+        public enum RootLEDLightState : byte
         {
             Off = 0,
             On = 1,
@@ -230,17 +242,22 @@ namespace JoyRoot
             Spin = 3
         }
 
-        public static RootCommand getSetLEDCmd(byte R, byte G, byte B, LEDState state = LEDState.On)
+        public static RootCommand getSetLEDCmd(Color color, RootLEDLightState state = RootLEDLightState.On)
         {
             RootCommand cmd = new RootCommand();
             cmd.Device = DeviceCode.LEDLights;
-            cmd.Command = 0x2;
+            cmd.commandCode = 0x2;
             cmd.Payload[0] = (byte)state;
-            cmd.Payload[1] = R;
-            cmd.Payload[2] = G;
-            cmd.Payload[3] = B;
+            cmd.Payload[1] = color.R;
+            cmd.Payload[2] = color.G;
+            cmd.Payload[3] = color.B;
             return cmd;
         }
 
+        public static RootCommand ResetPositionCmd {
+            get {
+                return new RootCommand(RootDeviceCommand.MotorResetPosition);
+            }
+        }
     }
 }

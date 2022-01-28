@@ -117,9 +117,9 @@ namespace JoyRoot
             // pictureBox1
             // 
             this.pictureBox1.BackColor = System.Drawing.Color.Black;
-            this.pictureBox1.Location = new System.Drawing.Point(65, 407);
+            this.pictureBox1.Location = new System.Drawing.Point(177, 292);
             this.pictureBox1.Name = "pictureBox1";
-            this.pictureBox1.Size = new System.Drawing.Size(31, 28);
+            this.pictureBox1.Size = new System.Drawing.Size(67, 50);
             this.pictureBox1.TabIndex = 7;
             this.pictureBox1.TabStop = false;
             this.pictureBox1.Click += new System.EventHandler(this.pictureBox1_Click);
