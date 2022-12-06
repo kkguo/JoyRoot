@@ -170,7 +170,7 @@ namespace JoyRoot
         }
 
         #region Motor Command
-        public static RootCommand getMoveCommand(Int32 left, Int32 right)
+        public static RootCommand moveCmd(Int32 left, Int32 right)
         {
             RootCommand cmd = new RootCommand(RootDeviceCommand.MotorSetSpeed);
             BitConverter.GetBytes(left).Reverse().ToArray().CopyTo(cmd.Payload, 0);
@@ -182,7 +182,7 @@ namespace JoyRoot
         {
             get
             {
-                return getMoveCommand(0, 0);
+                return moveCmd(0, 0);
             }
         }
 
@@ -190,7 +190,7 @@ namespace JoyRoot
         {
             get
             {
-                return getMoveCommand(100, 100);
+                return moveCmd(100, 100);
             }
         }
 
@@ -198,7 +198,7 @@ namespace JoyRoot
         {
             get
             {
-                return getMoveCommand(-100, -100);
+                return moveCmd(-100, -100);
             }
         }
 
@@ -206,7 +206,7 @@ namespace JoyRoot
         {
             get
             {
-                return getMoveCommand(-100, 100);
+                return moveCmd(-100, 100);
             }
         }
 
@@ -214,7 +214,7 @@ namespace JoyRoot
         {
             get
             {
-                return getMoveCommand(100, -100);
+                return moveCmd(100, -100);
             }
         }
 
@@ -235,7 +235,7 @@ namespace JoyRoot
         }
         #endregion
 
-        public static RootCommand getMarkerEraserCmd(bool MarkerUp, bool EraserUp)
+        public static RootCommand markerEraserCmd(bool MarkerUp, bool EraserUp)
         {
             RootCommand cmd = new RootCommand(RootDeviceCommand.MarkerEraserSetPosition);
             cmd.Payload[3] = (byte)(MarkerUp ? (EraserUp ? 3 : 2):1);
@@ -250,7 +250,7 @@ namespace JoyRoot
             Spin = 3
         }
 
-        public static RootCommand getSetLEDCmd(Color color, RootLEDLightState state = RootLEDLightState.On)
+        public static RootCommand setLEDCmd(Color color, RootLEDLightState state = RootLEDLightState.On)
         {
             RootCommand cmd = new RootCommand();
             cmd.Device = DeviceCode.LEDLights;
@@ -268,11 +268,25 @@ namespace JoyRoot
             }
         }
 
-        public static RootCommand getDisableEventsCmd()
+        public static RootCommand disableEventsCmd()
         {
             RootCommand cmd = new RootCommand(RootDeviceCommand.DisableEvents);
             cmd.Payload[15] = 255;
             cmd.Payload[14] = 255;
+            return cmd;
+        }
+
+        public static RootCommand playSoundCmd(UInt32 frequency, UInt16 duration)
+        {
+            RootCommand cmd = new RootCommand(RootDeviceCommand.SoundPlayNote);
+            var bytes = BitConverter.GetBytes((UInt32)frequency);
+            cmd.Payload[3] = bytes[0];
+            cmd.Payload[2] = bytes[1];
+            cmd.Payload[1] = bytes[2];
+            cmd.Payload[0] = bytes[3];            
+            bytes = BitConverter.GetBytes((UInt16)duration);       
+            cmd.Payload[4] = bytes[1];
+            cmd.Payload[5] = bytes[0];
             return cmd;
         }
     }

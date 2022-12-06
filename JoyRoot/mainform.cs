@@ -193,6 +193,7 @@ namespace JoyRoot
 
         static bool joystickIsInControl=false;
         static int direction = 0;
+        static bool rightTriggerFlag = false;
         private void UpdateJoystick()
         {
             if (Gamepad.Gamepads.Count > 0)
@@ -237,6 +238,74 @@ namespace JoyRoot
                     btnStop.Invoke((MethodInvoker)delegate { btnStop_Click(this, new EventArgs()); });
                     joystickIsInControl = false;
                     direction = 0;
+                }
+                if (reading.Buttons.HasFlag(GamepadButtons.RightShoulder))
+                {
+                    listAvailibleRoot.Invoke((MethodInvoker)delegate {
+                        foreach (ListViewItem item in listAvailibleRoot.Items)
+                        {
+                            if (item.Checked)
+                            {
+                                RootDevice root = (RootDevice)item.Tag;
+                                root.setLed(Color.Red, RootCommand.RootLEDLightState.Spin);
+                            }
+                        }
+                    });
+                }
+                if (reading.RightTrigger == 1)
+                {
+                    if (!rightTriggerFlag)
+                    {
+                        listAvailibleRoot.Invoke((MethodInvoker)delegate
+                        {
+                            if (listAvailibleRoot.CheckedItems.Count > 1) // multiple checked
+                            {
+                                listAvailibleRoot.Items[0].Checked = true;
+                                for (int i = 1; i < listAvailibleRoot.Items.Count; i++)
+                                {
+                                    listAvailibleRoot.Items[i].Checked = false;
+                                }
+                            }
+                            else
+                            {
+                                for (int i = 0; i < listAvailibleRoot.Items.Count; i++)
+                                {
+                                    if (listAvailibleRoot.Items[i].Checked)
+                                    {
+                                        listAvailibleRoot.Items[i].Checked = false;
+                                        if (i == listAvailibleRoot.Items.Count - 1)
+                                            listAvailibleRoot.Items[0].Checked = true;
+                                        else
+                                            listAvailibleRoot.Items[i + 1].Checked = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        });
+                        rightTriggerFlag = true;
+                    }
+                } else
+                {
+                    rightTriggerFlag = false;
+                }
+                if (reading.Buttons.HasFlag(GamepadButtons.X))
+                {
+                    listAvailibleRoot.Invoke((MethodInvoker)delegate
+                    {
+                        foreach (ListViewItem item in listAvailibleRoot.Items)
+                        {
+                            if (item.Checked)
+                            {
+                                RootDevice root = (RootDevice)item.Tag;
+                                root.playNote(261, 500);
+                                System.Threading.Thread.Sleep(500);
+                                root.playNote(293, 500);
+                                System.Threading.Thread.Sleep(500);
+                                root.playNote(329, 500);
+                                System.Threading.Thread.Sleep(500);
+                            }
+                        }
+                    });
                 }
             }
         }

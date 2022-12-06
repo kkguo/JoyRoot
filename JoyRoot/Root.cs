@@ -202,14 +202,13 @@ namespace JoyRoot
             {
                 System.Threading.Thread.Sleep(100);
             }
-
+            QResponse?.Dispose();
+            QCommand?.Dispose();
             //_device.ConnectionStatusChanged -= ConnectionStatusChanged;
             //QResponseCancellationTokenSource.Cancel();
             QResponseCancellationTokenSource?.Dispose();
             //QCommandCancellationTokenSource.Cancel();
-            QResponseCancellationTokenSource?.Dispose();
-            QResponse?.Dispose();
-            QCommand?.Dispose();
+            QResponseCancellationTokenSource?.Dispose();            
             _device?.Dispose();
             _device = null;
             _connected = false;
@@ -235,7 +234,7 @@ namespace JoyRoot
                     {
                         DataWriter dw = new DataWriter();
                         dw.WriteBytes(cmd.pack());
-                        await rxCh.WriteValueWithResultAsync(dw.DetachBuffer());
+                        await rxCh.WriteValueAsync(dw.DetachBuffer());
                     }
                 }
 
@@ -387,7 +386,7 @@ namespace JoyRoot
         }
 
         public void setLed(System.Drawing.Color color, RootCommand.RootLEDLightState ledstate = RootCommand.RootLEDLightState.On) {
-            _ = sendCommand(RootCommand.getSetLEDCmd(color, ledstate));
+            _ = sendCommand(RootCommand.setLEDCmd(color, ledstate));
         }
 
         public void resetPosition() {
@@ -411,10 +410,15 @@ namespace JoyRoot
 
         public void disableEvents()
         {
-            var cmd = RootCommand.getDisableEventsCmd();
+            var cmd = RootCommand.disableEventsCmd();
             _ = sendCommand(cmd);
         }
 
+        public void playNote(UInt32 frequency, UInt16 duration)
+        {
+            var cmd = RootCommand.playSoundCmd(frequency, duration);
+            _ = sendCommand(cmd);
+        }
         #region Response from robot
 
         #region Events defines
