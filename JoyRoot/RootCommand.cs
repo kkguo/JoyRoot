@@ -32,7 +32,7 @@ namespace JoyRoot
         }
         public enum RootDeviceCommand : UInt16
         {
-            GetVersion = 0x00,
+            GetVersion = 0x0000,
             SetName = 0x0100,
             GetName = 0x0200,
             StopNReset = 0x0300,
@@ -107,7 +107,7 @@ namespace JoyRoot
         }
 
         private PacketIDType IDType = PacketIDType.Inc;
-        private byte PacketID = 0;
+        public byte PacketID = 0;
         public byte[] Payload = new byte[16];
 
         protected byte checksum
@@ -218,6 +218,14 @@ namespace JoyRoot
             }
         }
 
+        public static RootCommand DisconnectCmd
+        {
+            get
+            {
+                return new RootCommand(RootDeviceCommand.Disconnect);
+            }
+        }
+
         public static RootCommand moveDistanceCmd(Int32 distance)
         {
             RootCommand cmd = new RootCommand(RootDeviceCommand.MotorDriveDistance);
@@ -258,6 +266,14 @@ namespace JoyRoot
             get {
                 return new RootCommand(RootDeviceCommand.MotorResetPosition);
             }
+        }
+
+        public static RootCommand getDisableEventsCmd()
+        {
+            RootCommand cmd = new RootCommand(RootDeviceCommand.DisableEvents);
+            cmd.Payload[15] = 255;
+            cmd.Payload[14] = 255;
+            return cmd;
         }
     }
 }

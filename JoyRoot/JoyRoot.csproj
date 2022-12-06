@@ -66,6 +66,7 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BLEManager.cs" />
     <Compile Include="KeyboardListener.cs" />
     <Compile Include="Root.cs" />
     <Compile Include="mainform.cs">
@@ -88,6 +89,7 @@
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
+      <DesignTime>True</DesignTime>
     </Compile>
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
@@ -112,6 +114,39 @@
   </ItemGroup>
   <ItemGroup>
     <WCFMetadata Include="Connected Services\" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Properties\Screenshot 2022-01-23 094247.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Properties\BatteryStatus.jpg" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\RT0.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\RT1.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\BatteryStatus.jpg" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\MoveBackward.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\MoveForward.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\Stop.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\TurnLeft.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\TurnRight.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\LED.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

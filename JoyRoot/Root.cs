@@ -7,8 +7,9 @@ using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using System.Threading;
+using System.Collections.Concurrent;
 using Windows.Storage.Streams;
-
 
 namespace JoyRoot
 {
@@ -21,16 +22,15 @@ namespace JoyRoot
             UNKNOWN=2
         };
 
-        #region static
+        #region static fields
         public static Dictionary<ulong, RootDevice> deviceList = new Dictionary<ulong, RootDevice>();
         
         public static event EventHandler DeviceFound;
 
-        // Advertisement 
+        #region constants and GUID
         public static readonly ushort ManufacturerID = 0x600;
         public static readonly byte AdvertisementIdentifierSectionType = 0x6;
 
-        #region GUID
         // GATT Services
         public static readonly Guid guidRootIdentifierService         = Guid.Parse("48c5d828-ac2a-442d-97a3-0c9822b04979");
         public static readonly Guid guidDeviceInfomationService       = Guid.Parse("0000180a-0000-1000-8000-00805f9b34fb");
@@ -52,20 +52,30 @@ namespace JoyRoot
         
         #region BT connection
         public ulong Address {
-            private set;
+            set;
             get;
         }
 
-        private byte[] state = new byte[4];
+        public byte[] State = new byte[4];
         private BluetoothLEDevice _device;
+        private bool _connected = false;
+        private DateTime lastSeen;
 
         public event EventHandler AdvertiseUpdate;
 
+        static BluetoothLEAdvertisementWatcher watcher;
+
         public static void Scan() {
-            BluetoothLEAdvertisementWatcher watcher = new BluetoothLEAdvertisementWatcher();
+            if (watcher == null)
+                watcher = new BluetoothLEAdvertisementWatcher();
             watcher.ScanningMode = BluetoothLEScanningMode.Active;
             watcher.Received += OnAdvertisementReceived;
             watcher.Start();
+        }
+
+        public static void StopScan() {
+            watcher.Received -= OnAdvertisementReceived;
+            watcher.Stop();
         }
 
         private static void OnAdvertisementReceived(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs args) {
@@ -73,11 +83,19 @@ namespace JoyRoot
             if (deviceList.ContainsKey(args.BluetoothAddress)) {
                 root = deviceList[args.BluetoothAddress];
                 if (args.IsScanResponse) {
+#if DEBUG
+                    foreach(var section in args.Advertisement.DataSections) {
+                        byte[] bytes = new byte[section.Data.Length];
+                        DataReader.FromBuffer(section.Data).ReadBytes(bytes);
+                        Debug.WriteLine(BitConverter.ToString(bytes));
+                    }
+#endif
                     // Read Name
                     byte[] tmp = new byte[args.Advertisement.DataSections[0].Data.Length];
                     root.Name = DataReader.FromBuffer(args.Advertisement.DataSections[0].Data).ReadString(args.Advertisement.DataSections[0].Data.Length);
                     // Read state
-                    DataReader.FromBuffer(args.Advertisement.DataSections[1].Data).ReadBytes(root.state);
+                    DataReader.FromBuffer(args.Advertisement.DataSections[1].Data).ReadBytes(root.State);
+                    root.lastSeen = DateTime.Now;
                     root.AdvertiseUpdate.Invoke(root, new EventArgs());
                 }
             } else if (args.Advertisement.ServiceUuids.Contains(guidRootIdentifierService)) { // found root
@@ -89,6 +107,7 @@ namespace JoyRoot
                 root = new RootDevice(model);
                 root.Address = args.BluetoothAddress;
                 deviceList.Add(args.BluetoothAddress, root);
+                root.lastSeen = DateTime.Now;
                 DeviceFound.Invoke(root, new EventArgs());
             };
         }
@@ -99,6 +118,56 @@ namespace JoyRoot
             return _device;
         }
 
+        #region GATT routine
+        private async Task<GattDeviceService> getGattServices(Guid ServiceGuid)
+        {
+            if (BTServices.ContainsKey(ServiceGuid))
+            {
+                return BTServices[ServiceGuid];
+            }
+            GattDeviceServicesResult result = await _device.GetGattServicesForUuidAsync(ServiceGuid);
+            if (result.Status == GattCommunicationStatus.Success)
+            {
+                BTServices.Add(ServiceGuid, result.Services[0]);
+                return result.Services[0];
+            }
+            else
+                return null;
+        }
+
+        private async Task<GattCharacteristic> getGattCharacteristic(Guid ServiceGuid, Guid guid)
+        {
+            if (BTcharacteristics.ContainsKey(guid))
+            {
+                return BTcharacteristics[guid];
+            }
+            GattDeviceService serv = await getGattServices(ServiceGuid);
+            if (await serv?.RequestAccessAsync() == DeviceAccessStatus.Allowed)
+            {
+                var cresult = await serv.GetCharacteristicsForUuidAsync(guid);
+                if (cresult.Status == GattCommunicationStatus.Success)
+                {
+                    BTcharacteristics.Add(guid, cresult.Characteristics[0]);
+                    return cresult.Characteristics[0];
+                }
+            }
+            return null;
+        }
+
+        public async Task<string> readGattCharString(Guid service, Guid guid)
+        {
+            var cha = await getGattCharacteristic(service, guid);
+            if (cha != null)
+            {
+                var gattval = await cha.ReadValueAsync();
+                return DataReader.FromBuffer(gattval.Value).ReadString(gattval.Value.Length);
+            }
+            else
+                return "";
+        }
+
+        #endregion
+
         public async Task<bool> isAvailible() {
             return ((await getBluetoothDevice()) != null);
         }
@@ -106,23 +175,95 @@ namespace JoyRoot
         private Dictionary<Guid , GattCharacteristic> BTcharacteristics = new Dictionary<Guid, GattCharacteristic>();
         private Dictionary<Guid , GattDeviceService> BTServices = new Dictionary<Guid, GattDeviceService>();
 
+        private BlockingCollection<RootCommand> QCommand;
+        private BlockingCollection<RootCommand> QResponse;
+        private CancellationTokenSource QCommandCancellationTokenSource = new CancellationTokenSource();
+        private CancellationTokenSource QResponseCancellationTokenSource = new CancellationTokenSource();
+
         // This will trigger root beep
         public async Task Connect() {
             if (await isAvailible()) {
                 SerialNumber = await readGattCharString(guidDeviceInfomationService, guidSerialNumberCharacteristic);
                 FWVersion = await readGattCharString(guidDeviceInfomationService, guidFirwareVersionCharacteristic);
-                HWVersion = await readGattCharString(guidDeviceInfomationService, guidHardwareVersionCharacteristic);
-                ListenToRootTX();
+                HWVersion = await readGattCharString(guidDeviceInfomationService, guidHardwareVersionCharacteristic);                
+                QCommand = new BlockingCollection<RootCommand>();
+                QResponse = new BlockingCollection<RootCommand>();
+                await ListenToRootTX();
+                _ = Task.Run(() => sendCommandLoop());
+                //disableEvents();
+                _connected = true;
             }
         }
 
-        public void Disconnect() {            
+        public void Disconnect() {
+            _ = sendCommand(RootCommand.DisconnectCmd);
+            QCommand.CompleteAdding();
+            while(QCommand.IsCompleted == false)
+            {
+                System.Threading.Thread.Sleep(100);
+            }
+
             //_device.ConnectionStatusChanged -= ConnectionStatusChanged;
+            //QResponseCancellationTokenSource.Cancel();
+            QResponseCancellationTokenSource?.Dispose();
+            //QCommandCancellationTokenSource.Cancel();
+            QResponseCancellationTokenSource?.Dispose();
+            QResponse?.Dispose();
+            QCommand?.Dispose();
             _device?.Dispose();
             _device = null;
-            GC.Collect();
+            _connected = false;
+            //GC.Collect();
         }
 
+        static byte lastPacketID = 255;
+
+        /// <summary>
+        /// Command packets sends here
+        /// </summary>
+        private async void sendCommandLoop()
+        {
+            try
+            {
+                while (await isAvailible())
+                {
+                    RootCommand cmd = QCommand.Take(QCommandCancellationTokenSource.Token);
+                    lastPacketID++;
+                    cmd.PacketID = lastPacketID;
+                    var rxCh = await getGattCharacteristic(guidUARTService, guidRxCharacteristic);
+                    if (rxCh != null)
+                    {
+                        DataWriter dw = new DataWriter();
+                        dw.WriteBytes(cmd.pack());
+                        await rxCh.WriteValueWithResultAsync(dw.DetachBuffer());
+                    }
+                }
+
+            }
+            catch (ObjectDisposedException e)
+            {
+                //Disconnect();
+            }
+        }
+
+        /// <summary>
+        /// Recieve packets from Roots
+        /// </summary>
+        /// <returns></returns>
+        private async Task<GattCommunicationStatus> ListenToRootTX()
+        {
+            var cha = await getGattCharacteristic(guidUARTService, guidTxCharacteristic);
+            if (cha.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Indicate))
+            {
+                var status = await cha.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Indicate);
+                if (status == GattCommunicationStatus.Success)
+                {
+                    cha.ValueChanged += RootTXCommandRecieved;
+                }
+                return status;
+            }
+            return GattCommunicationStatus.AccessDenied;
+        }
         #endregion
 
         #region Root General info
@@ -141,11 +282,39 @@ namespace JoyRoot
 
         public int Battery {
             get {
-                return (int)state[3];
+                return (int)State[3];
             }
         }
 
         public string Name;
+
+        public struct RootTouchStatus
+        {
+            bool FrontLeft;
+            bool FrontRight;
+            bool RearLeft;
+            bool RearRight;
+        }
+
+        public RootTouchStatus buttons;
+
+        public struct RootBumperStatus
+        {
+            bool Left;
+            bool Right;
+        }
+
+        public RootBumperStatus bumpers;
+
+        public struct RootColorSensorStatus
+        {
+            System.Drawing.Color[] color;
+        }
+
+        RootColorSensorStatus colorSensor;
+
+        public bool CliffSensor;
+        public bool LightSensor;
 
         #endregion
 
@@ -167,143 +336,84 @@ namespace JoyRoot
         /// <summary>
         /// Send posted command, not expecting response
         /// </summary>
-        /// <param name="cmd"></param>
-        public async Task sendCommand(RootCommand cmd) {
+        /// <param name="cmd">command content</param>
+        /// <param name="waitForResponse">if set, will return a response, default is false</param>
+        public async Task<RootCommand> sendCommand(RootCommand cmd, bool waitForResponse = false) {
             if (await isAvailible()) {
-                try {
-                    var rxCh = await getGattCharacteristic(guidUARTService, guidRxCharacteristic);
-                    if (rxCh != null) {
-                        DataWriter dw = new DataWriter();
-                        dw.WriteBytes(cmd.pack());
-                        await rxCh.WriteValueWithResultAsync(dw.DetachBuffer());
-                    }
-                } catch (ObjectDisposedException e){
-                    Disconnect();
+                QCommand.Add(cmd);
+                if (waitForResponse)
+                {
+                    RootCommand response;
+                    response = QResponse.Take(QResponseCancellationTokenSource.Token);
+                    return response;
                 }
             }
+            return null;
         }
 
-        /// <summary>
-        /// Send non-posted command, blocking until response comes back
-        /// </summary>
-        /// <param name="cmd"></param>
-        /// <returns></returns>
-        public async Task<RootResponseArgs> sendCommandWithResponse(RootCommand cmd) {
-            await sendCommand(cmd);
-
-            return new RootResponseArgs(new byte[20]);
-        }
 
         public void moveForward() {
-            sendCommand(RootCommand.moveForwardCmd);
+            _ = sendCommand(RootCommand.moveForwardCmd);
         }
 
         public void moveBackward() {
-            sendCommand(RootCommand.moveBackwardCmd);
+            _ = sendCommand(RootCommand.moveBackwardCmd);
         }
 
         public void stopMove() {
-            sendCommand(RootCommand.stopMoveCmd);
+            _ = sendCommand(RootCommand.stopMoveCmd);
         }
 
         public void turnLeft(float angle = 0) {
             if (angle == 0) // unlimited
-                sendCommand(RootCommand.turnLeftCmd);
+                _ = sendCommand(RootCommand.turnLeftCmd);
             else {
                 Int32 anint = (Int32)(-angle*10);
                 RootCommand cmd = new RootCommand(RootCommand.RootDeviceCommand.MotorRotate);
                 BitConverter.GetBytes(anint).CopyTo(cmd.Payload, 0);
-                sendCommand(cmd);
+                _ = sendCommand(cmd);
             }
         }
 
         public void turnRight(float angle = 0) {
             if (angle == 0) // unlimited
-                sendCommand(RootCommand.turnRightCmd);
+                _ = sendCommand(RootCommand.turnRightCmd);
             else {
                 Int32 anint = (Int32)(angle * 10);
                 RootCommand cmd = new RootCommand(RootCommand.RootDeviceCommand.MotorRotate);
                 BitConverter.GetBytes(anint).CopyTo(cmd.Payload, 0);
-                sendCommand(cmd);
+                _ = sendCommand(cmd);
             }
         }
 
         public void setLed(System.Drawing.Color color, RootCommand.RootLEDLightState ledstate = RootCommand.RootLEDLightState.On) {
-            sendCommand(RootCommand.getSetLEDCmd(color, ledstate));
+            _ = sendCommand(RootCommand.getSetLEDCmd(color, ledstate));
         }
 
         public void resetPosition() {
             RootCommand cmd = new RootCommand(RootCommand.RootDeviceCommand.MotorResetPosition);
-            sendCommand(cmd);
+            _ = sendCommand(cmd);
         }
 
         public void navigate(UInt16 x, UInt16 y) {
             RootCommand cmd = new RootCommand(RootCommand.RootDeviceCommand.MotorNavigateToPosition);
             BitConverter.GetBytes(x).CopyTo(cmd.Payload, 0);
             BitConverter.GetBytes(y).CopyTo(cmd.Payload, 2);
-            sendCommand(cmd);
+            _ = sendCommand(cmd);
         }
 
-        #region GATT routine
-        private async Task<GattDeviceService> getGattServices(Guid ServiceGuid) {
-            if (BTServices.ContainsKey(ServiceGuid)) {
-                return BTServices[ServiceGuid];
-            }
-            GattDeviceServicesResult result = await _device.GetGattServicesForUuidAsync(ServiceGuid);
-            if (result.Status == GattCommunicationStatus.Success) {
-                BTServices.Add(ServiceGuid, result.Services[0]);
-                return result.Services[0];
-            }  else
-                return null;
+        public async Task<string> getSerialNumber()
+        {
+            RootCommand cmd = new RootCommand(RootCommand.RootDeviceCommand.GetSerialNumber);
+            RootCommand response = await sendCommand(cmd, true);
+            return response.Payload.ToString();
         }
 
-        //private async Task<GattCharacteristic> getGattCharacteristic(Guid guid) {
-        //    if (BTcharacteristics.ContainsKey(guid)) {
-        //        return BTcharacteristics[guid];
-        //    }
-        //    var result = await _device.GetGattServicesAsync();
-        //    foreach(var serv in result.Services) {
-        //        var cresult = await serv.GetCharacteristicsForUuidAsync(guid);
-        //        if (cresult.Status == GattCommunicationStatus.Success) {
-        //            BTcharacteristics.Add(guid, cresult.Characteristics[0]);
-        //            return cresult.Characteristics[0];
-        //        }
-        //    }
-        //    return null;
-        //}
-
-        private async Task<GattCharacteristic> getGattCharacteristic(Guid ServiceGuid, Guid guid) {
-            if (BTcharacteristics.ContainsKey(guid)) {
-                return BTcharacteristics[guid];
-            }
-            GattDeviceService serv = await getGattServices(ServiceGuid);
-            if (await serv?.RequestAccessAsync() == DeviceAccessStatus.Allowed) {
-                var cresult = await serv.GetCharacteristicsForUuidAsync(guid);
-                if (cresult.Status == GattCommunicationStatus.Success) {
-                    BTcharacteristics.Add(guid, cresult.Characteristics[0]);
-                    return cresult.Characteristics[0];
-                }
-            }
-            return null;
+        public void disableEvents()
+        {
+            var cmd = RootCommand.getDisableEventsCmd();
+            _ = sendCommand(cmd);
         }
-
-        public async Task<string> readGattCharString(Guid service, Guid guid) {
-            var cha = await getGattCharacteristic(service, guid);
-            if (cha != null) {
-                var gattval = await cha.ReadValueAsync();
-                return DataReader.FromBuffer(gattval.Value).ReadString(gattval.Value.Length);
-            } else 
-                return "";
-        }
-
-        private async void ListenToRootTX() {
-            var cha = await getGattCharacteristic(guidUARTService, guidTxCharacteristic);
-            var status = await cha.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Indicate);
-            if (status == GattCommunicationStatus.Success) {
-                cha.ValueChanged += RootTXCommandRecieved;
-            }
-        }
-        #endregion
 
         #region Response from robot
 
@@ -316,6 +426,8 @@ namespace JoyRoot
                 rootCommand = new RootCommand(bytes);
             }
         }
+
+        #region Response Args
         public class RootResponseArgs : RootUARTTxEventArgs
         {
             public RootResponseArgs(byte[] bytes) : base(bytes) {
@@ -524,6 +636,7 @@ namespace JoyRoot
                 threshold = BitConverter.ToUInt16(bytes, 10);
             }
         }
+        #endregion
 
         // delegates
         public delegate void RootResponseHandler(RootDevice root, RootResponseArgs e);
@@ -567,7 +680,10 @@ namespace JoyRoot
                         responseArgs = new RootResponseArgs(bytes);
                         break;
                 }
-                RootResponse?.Invoke(this, responseArgs);
+
+                QResponse.Add(new RootCommand(bytes));                
+                if (responseArgs != null)
+                    RootResponse?.Invoke(this, responseArgs);
             }           
         }
 

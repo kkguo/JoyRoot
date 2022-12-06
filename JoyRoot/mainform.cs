@@ -8,18 +8,25 @@ using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Devices.Enumeration;
 using Windows.Storage.Streams;
 using System.Diagnostics;
+using System.Drawing;
+using Windows.Gaming.Input;
 
 namespace JoyRoot
 {
     public partial class mainform : Form {
         KeyboardListener KeyboardListener = new KeyboardListener();
+        Gamepad joystick;
 
         public mainform() {
             InitializeComponent();
+            
+            imageList1.Images.Add("RT1",Properties.Resources.RT1);
+            imageList1.Images.Add("RT0",Properties.Resources.RT0);
             var header = new ColumnHeader();
             header.Width = listAvailibleRoot.Width;
             listAvailibleRoot.Columns.Add(header);
-            //listAvailibleRoot.AutoResizeColumns(ColumnHeaderAutoResizeStyle.ColumnContent);
+            listAvailibleRoot.LargeImageList = imageList1;
+            listAvailibleRoot.View = View.LargeIcon;
         }
 
         private void mainform_Load(object sender, EventArgs e) {
@@ -37,6 +44,7 @@ namespace JoyRoot
             root.AdvertiseUpdate += RootDevice_AdvertiseUpdate;
             var newitem = new ListViewItem(" (" + root.Model.ToString() + ")");
             newitem.Tag = root;
+            newitem.ImageKey = root.Model.ToString();
             listAvailibleRoot.Invoke((MethodInvoker)delegate
             {
                 listAvailibleRoot.Items.Add(newitem);
@@ -61,7 +69,14 @@ namespace JoyRoot
             label1.Invoke((MethodInvoker)delegate {
                 label1.Text = root.SerialNumber;
             });
-
+            _ = Task.Run(() =>
+            {
+                while (true)
+                {
+                    UpdateJoystick(); 
+                    System.Threading.Thread.Sleep(100);
+                }
+            });
             btnUP.Enabled = true;
             btnDown.Enabled = true;
             btnLeft.Enabled = true;
@@ -169,9 +184,60 @@ namespace JoyRoot
 
         private void listAvailibleRoot_ItemChecked(object sender, ItemCheckedEventArgs e) {
             if (e.Item.Checked) {
-                connect(((RootDevice)e.Item.Tag));
+                RootDevice root = (RootDevice)e.Item.Tag;
+                connect(root);
             } else {
                 //((RootDevice)e.Item.Tag).disconnect();
+            }
+        }
+
+        static bool joystickIsInControl=false;
+        static int direction = 0;
+        private void UpdateJoystick()
+        {
+            if (Gamepad.Gamepads.Count > 0)
+            {
+                joystick = Gamepad.Gamepads[0];
+
+                GamepadReading reading = joystick.GetCurrentReading();
+                if (reading.Buttons.HasFlag(GamepadButtons.DPadLeft))
+                {
+                    if (direction != 1)
+                    {
+                        btnLeft.Invoke((MethodInvoker)delegate { btnLeft_Click(this, new EventArgs()); });
+                        joystickIsInControl = true;
+                        direction = 1;
+                    }
+                } else if (reading.Buttons.HasFlag(GamepadButtons.DPadRight))
+                {
+                    if (direction != 2)
+                    {
+                        btnRight.Invoke((MethodInvoker)delegate { btnRight_Click(this, new EventArgs()); });
+                        joystickIsInControl = true;
+                        direction = 2;
+                    }
+                } else if (reading.Buttons.HasFlag(GamepadButtons.DPadDown))
+                {
+                    if (direction != 3)
+                    {
+                        btnDown.Invoke((MethodInvoker)delegate { btnDown_Click(this, new EventArgs()); });
+                        joystickIsInControl = true;
+                        direction = 3;
+                    }
+                } else if (reading.Buttons.HasFlag(GamepadButtons.DPadUp))
+                {
+                    if (direction != 4)
+                    {
+                        btnUP.Invoke((MethodInvoker)delegate { btnUP_Click(this, new EventArgs()); });
+                        joystickIsInControl = true;
+                        direction = 4;
+                    }
+                } else if (joystickIsInControl)
+                {
+                    btnStop.Invoke((MethodInvoker)delegate { btnStop_Click(this, new EventArgs()); });
+                    joystickIsInControl = false;
+                    direction = 0;
+                }
             }
         }
     }
