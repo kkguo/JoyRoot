@@ -23,12 +23,15 @@ namespace JoyRoot
             LEDLights = 3,
             ColorSensor = 4,
             Sound = 5,
+            IRProximity = 11,
             Bumpers = 12,
             LightSensor = 13,
             Battery = 14,
             Accelerometer = 16,
             TouchSensors = 17,
-            CliffSensor = 20
+            DockingSensors = 19,
+            CliffSensor = 20,
+            Connectivity = 100,
         }
         public enum RootDeviceCommand : UInt16
         {
@@ -101,7 +104,7 @@ namespace JoyRoot
         }
 
         public bool isEvent {
-            get {                
+            get {
                 return Enum.IsDefined(typeof(RootEventType), _devicecommand);
             }
         }
@@ -287,6 +290,15 @@ namespace JoyRoot
             bytes = BitConverter.GetBytes((UInt16)duration);       
             cmd.Payload[4] = bytes[1];
             cmd.Payload[5] = bytes[0];
+            return cmd;
+        }
+
+        public static RootCommand getColorSensorDataCmd(byte sensorBank, byte Lighting, byte Format)
+        {
+            RootCommand cmd = new RootCommand(RootDeviceCommand.ColorSensorGetData);
+            cmd.Payload[0] = sensorBank;
+            cmd.Payload [1] = Lighting;
+            cmd.Payload [2] = Format;
             return cmd;
         }
     }

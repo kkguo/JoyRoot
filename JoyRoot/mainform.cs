@@ -57,7 +57,7 @@ namespace JoyRoot
                 RootDevice root = (RootDevice)o;
                 foreach (ListViewItem item in listAvailibleRoot.Items) {
                     if (item.Tag == root) {
-                        item.Text = root.Name + " (" + root.Model.ToString() + ") " + root.Battery + "%";
+                        item.Text = root.Name + " (" + root.Model.ToString() + ") " + root.BatteryPercentage + "%";
                     }
                 }
             });
@@ -82,6 +82,24 @@ namespace JoyRoot
             btnLeft.Enabled = true;
             btnRight.Enabled = true;
             btnStop.Enabled = true;
+            root.RootEvent += Root_RootEvent;
+        }
+
+        private void Root_RootEvent(RootDevice root, RootDevice.RootEventArgs e)
+        {
+            if (e.rootCommand.Event == RootCommand.RootEventType.ColorSensorEvent)
+            {
+                listAvailibleRoot.Invoke((MethodInvoker)delegate
+                {
+                    if (listAvailibleRoot.SelectedItems.Count == 1)
+                    {
+                        if ((RootDevice)listAvailibleRoot.SelectedItems[0].Tag == root)
+                        {
+                            updateColorSensor(root);
+                        }
+                    }
+                });
+            }
         }
 
         private void btnDown_Click(object sender, EventArgs e)
@@ -297,15 +315,56 @@ namespace JoyRoot
                             if (item.Checked)
                             {
                                 RootDevice root = (RootDevice)item.Tag;
-                                root.playNote(261, 500);
-                                System.Threading.Thread.Sleep(500);
-                                root.playNote(293, 500);
-                                System.Threading.Thread.Sleep(500);
-                                root.playNote(329, 500);
-                                System.Threading.Thread.Sleep(500);
+                                root.playNote("C4");                                
+                                root.playNote("D");
+                                root.playNote("E",1000);
                             }
                         }
                     });
+                }
+            }
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            foreach (ListViewItem item in listAvailibleRoot.Items)
+            {
+                if (item.Checked)
+                {
+                    RootDevice root = (RootDevice)item.Tag;
+                    root.playNote("C4");
+                    root.playNote("D");
+                    root.playNote("E", 1000);
+                }
+            }
+        }
+
+        private void updateColorSensor(RootDevice root)
+        {
+            if (listAvailibleRoot.SelectedItems.Count == 1)
+            {
+                if ((RootDevice)listAvailibleRoot.SelectedItems[0].Tag == root)
+                {
+                    Graphics g;
+                    if (picColorSensor.Image == null)
+                    {
+                        g = picColorSensor.CreateGraphics();
+                    } else
+                    {
+                        g = Graphics.FromImage(picColorSensor.Image);
+                    }
+                    for (int i = 0; i < root.ColorSensorColors.Length; i++)
+                    {
+                        Color c = Color.Black;
+                        if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.White) c = Color.White;
+                        else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Green) c = Color.Green;
+                        else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Blue) c = Color.Blue;
+                        else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Red) c = Color.Red;
+                        else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Black) c = Color.Black;
+
+                        int wid = picColorSensor.Width / root.ColorSensorColors.Length;
+                        g.FillRectangle(new SolidBrush(c), wid * i, 0, wid, picColorSensor.Height);
+                    }
                 }
             }
         }

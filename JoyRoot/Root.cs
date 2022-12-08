@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Collections.Concurrent;
 using Windows.Storage.Streams;
+using System.Text.RegularExpressions;
 
 namespace JoyRoot
 {
@@ -61,6 +62,106 @@ namespace JoyRoot
         private bool _connected = false;
         private DateTime lastSeen;
 
+        #region Root General info
+        public string SerialNumber
+        {
+            get;
+            private set;
+        }
+        public string HWVersion
+        {
+            get;
+            private set;
+        }
+        public string FWVersion
+        {
+            get;
+            private set;
+        }
+
+        #endregion
+
+        #region States
+        public int BatteryPercentage
+        {
+            get;                            
+            private set;
+        }
+        public int BatteryVoltage { get; private set; }
+        
+
+        public string Name;
+
+        [Flags]
+        public enum BumperState : byte
+        {
+            Right = 0x40,
+            Left = 0x80,
+        }
+
+        public enum EyeState : byte
+        {
+            BothDark = 4,
+            RightBrighter = 5,
+            LeftBrighter = 6,
+            BothBright = 7,
+        }
+
+        public BumperState Bumpers { get; private set; }
+
+        public EyeState eyeState { get; private set; }
+        public UInt16 EyeAmbientLevelLeft { get; private set; }
+        public UInt16 EyeAmbientLevelRight { get; private set; }
+        
+        [Flags]
+        public enum TouchSensorState:byte
+        {
+            FrontLeft = 0x8,
+            FrontRight = 0x4,
+            RearLeft = 0x2,
+            RearRight = 0x1,
+        }
+
+        public TouchSensorState TouchSensor;
+
+        public bool Cliff { get; private set; }
+        public UInt16 CliffSensorValue { get; private set; }
+        public UInt16 CliffSensorThreshold { get; private set; }
+
+        public enum ColorSensorColor : byte
+        {
+            White = 0,
+            Black = 1,
+            Red = 2,
+            Green = 3,
+            Blue = 4,
+        }
+
+        public ColorSensorColor[] ColorSensorColors
+        {
+            get; private set;
+        }
+
+        public enum StalledMotor :byte
+        {
+            Left = 0,
+            Right = 1,
+            MarkerEraser = 2,
+        }
+        public enum StalledMotorCause : byte
+        {
+            NOStall = 0,
+            OverCurrent = 1,
+            UnderCurrent = 2,
+            UnderSpeed = 3,
+            SaturatedPID = 4,
+            TimeOut = 5
+        }
+        public StalledMotor stalledMotor { get; private set; }
+        public StalledMotorCause stalledMotorCause { get; private set; }        
+
+        #endregion
+
         public event EventHandler AdvertiseUpdate;
 
         static BluetoothLEAdvertisementWatcher watcher;
@@ -95,6 +196,7 @@ namespace JoyRoot
                     root.Name = DataReader.FromBuffer(args.Advertisement.DataSections[0].Data).ReadString(args.Advertisement.DataSections[0].Data.Length);
                     // Read state
                     DataReader.FromBuffer(args.Advertisement.DataSections[1].Data).ReadBytes(root.State);
+                    root.BatteryPercentage = (int)root.State[3];
                     root.lastSeen = DateTime.Now;
                     root.AdvertiseUpdate.Invoke(root, new EventArgs());
                 }
@@ -176,9 +278,7 @@ namespace JoyRoot
         private Dictionary<Guid , GattDeviceService> BTServices = new Dictionary<Guid, GattDeviceService>();
 
         private BlockingCollection<RootCommand> QCommand;
-        private BlockingCollection<RootCommand> QResponse;
-        private CancellationTokenSource QCommandCancellationTokenSource = new CancellationTokenSource();
-        private CancellationTokenSource QResponseCancellationTokenSource = new CancellationTokenSource();
+        private Dictionary<RootCommand.RootDeviceCommand, BlockingCollection<RootCommand>> DicResponse;
 
         // This will trigger root beep
         public async Task Connect() {
@@ -187,7 +287,7 @@ namespace JoyRoot
                 FWVersion = await readGattCharString(guidDeviceInfomationService, guidFirwareVersionCharacteristic);
                 HWVersion = await readGattCharString(guidDeviceInfomationService, guidHardwareVersionCharacteristic);                
                 QCommand = new BlockingCollection<RootCommand>();
-                QResponse = new BlockingCollection<RootCommand>();
+                DicResponse = new Dictionary<RootCommand.RootDeviceCommand, BlockingCollection<RootCommand>>();
                 await ListenToRootTX();
                 _ = Task.Run(() => sendCommandLoop());
                 //disableEvents();
@@ -202,20 +302,20 @@ namespace JoyRoot
             {
                 System.Threading.Thread.Sleep(100);
             }
-            QResponse?.Dispose();
+            //QResponse?.Dispose();
             QCommand?.Dispose();
             //_device.ConnectionStatusChanged -= ConnectionStatusChanged;
             //QResponseCancellationTokenSource.Cancel();
-            QResponseCancellationTokenSource?.Dispose();
+            //QResponseCancellationTokenSource?.Dispose();
             //QCommandCancellationTokenSource.Cancel();
-            QResponseCancellationTokenSource?.Dispose();            
+            //QResponseCancellationTokenSource?.Dispose();            
             _device?.Dispose();
             _device = null;
             _connected = false;
             //GC.Collect();
         }
 
-        static byte lastPacketID = 255;
+        private byte lastSentPacketID = 255;
 
         /// <summary>
         /// Command packets sends here
@@ -226,9 +326,9 @@ namespace JoyRoot
             {
                 while (await isAvailible())
                 {
-                    RootCommand cmd = QCommand.Take(QCommandCancellationTokenSource.Token);
-                    lastPacketID++;
-                    cmd.PacketID = lastPacketID;
+                    RootCommand cmd = QCommand.Take();
+                    lastSentPacketID++;
+                    cmd.PacketID = lastSentPacketID;
                     var rxCh = await getGattCharacteristic(guidUARTService, guidRxCharacteristic);
                     if (rxCh != null)
                     {
@@ -263,58 +363,93 @@ namespace JoyRoot
             }
             return GattCommunicationStatus.AccessDenied;
         }
-        #endregion
 
-        #region Root General info
-        public string SerialNumber {
-            get;
-            private set;
-        }
-        public string HWVersion { 
-            get; 
-            private set; 
-        }
-        public string FWVersion {
-            get;
-            private set;
-        }
-
-        public int Battery {
-            get {
-                return (int)State[3];
+        #region Response and Events defines
+        // event args
+        public class RootUARTTxEventArgs : EventArgs
+        {
+            public RootCommand rootCommand;
+            public RootUARTTxEventArgs(RootCommand cmd) : base()
+            {
+                rootCommand = cmd;
             }
         }
 
-        public string Name;
-
-        public struct RootTouchStatus
+        public class RootEventArgs : RootUARTTxEventArgs
         {
-            bool FrontLeft;
-            bool FrontRight;
-            bool RearLeft;
-            bool RearRight;
+            public UInt32 timeStamp;
+            public RootEventArgs(RootCommand cmd) : base(cmd)
+            {
+                timeStamp = BitConverter.ToUInt32(cmd.Payload, 3);
+            }
         }
 
-        public RootTouchStatus buttons;
-
-        public struct RootBumperStatus
+        public class RootResponseArgs : RootUARTTxEventArgs
         {
-            bool Left;
-            bool Right;
+            public RootResponseArgs(RootCommand cmd) : base(cmd) { }
         }
 
-        public RootBumperStatus bumpers;
 
-        public struct RootColorSensorStatus
+        // delegates
+        public delegate void RootResponseHandler(RootDevice root, RootResponseArgs e);
+        public delegate void RootEventHandler(RootDevice root, RootEventArgs e);
+        public event RootEventHandler RootEvent;
+        public event RootResponseHandler RootResponse;
+
+        #endregion
+        private void RootTXCommandRecieved(GattCharacteristic sender, GattValueChangedEventArgs args)
         {
-            System.Drawing.Color[] color;
+            lastSeen = DateTime.Now;
+            byte[] bytes = new byte[args.CharacteristicValue.Length];
+            DataReader.FromBuffer(args.CharacteristicValue).ReadBytes(bytes);
+            var cmd = new RootCommand(bytes);
+            if (cmd.isEvent)
+            { // is Event, update device states
+                switch (cmd.Event)
+                {
+                    case RootCommand.RootEventType.BumperEvent:
+                        Bumpers = (BumperState)cmd.Payload[4];
+                        break;
+                    case RootCommand.RootEventType.LightEvent:
+                        eyeState = (EyeState)cmd.Payload[4];
+                        EyeAmbientLevelLeft = BitConverter.ToUInt16(cmd.Payload, 5);
+                        EyeAmbientLevelRight = BitConverter.ToUInt16(cmd.Payload, 7);
+                        break;
+                    case RootCommand.RootEventType.BatteryLevelEvent:
+                        BatteryVoltage = BitConverter.ToUInt16(cmd.Payload, 4); 
+                        BatteryPercentage = cmd.Payload[6];                        
+                        break;
+                    case RootCommand.RootEventType.TouchSensorEvent:
+                        TouchSensor = (TouchSensorState)cmd.Payload[4];
+                        break;
+                    case RootCommand.RootEventType.CliffEvent:
+                        Cliff = (cmd.Payload[4] != 0);
+                        CliffSensorValue = BitConverter.ToUInt16(cmd.Payload, 5);
+                        CliffSensorThreshold = BitConverter.ToUInt16(cmd.Payload, 7);
+                        break;
+                    case RootCommand.RootEventType.ColorSensorEvent:
+                        ColorSensorColors = new ColorSensorColor[32];
+                        for(int i= 0; i<16;i++)
+                        {
+                            byte v = (byte)(cmd.Payload[i] & 0xF);
+                            ColorSensorColors[i * 2 + 1] = (v > 4) ? ColorSensorColor.White : (ColorSensorColor)v;
+                            v = (byte)(cmd.Payload[i] >> 4);
+                            ColorSensorColors[i * 2]     = (v > 4) ? ColorSensorColor.White :(ColorSensorColor)v;
+                        }
+                        break;
+                    case RootCommand.RootEventType.MotorStallEvent:
+                        stalledMotor = (StalledMotor) cmd.Payload[4];
+                        stalledMotorCause = (StalledMotorCause)cmd.Payload[5];
+                        break;
+                }
+                RootEvent?.Invoke(this, new RootEventArgs(cmd));
+            }
+            else
+            { // is response, rise event and send back
+                DicResponse[cmd.DeviceCommand].Add(cmd);
+                RootResponse?.Invoke(this, new RootResponseArgs(cmd));
+            }
         }
-
-        RootColorSensorStatus colorSensor;
-
-        public bool CliffSensor;
-        public bool LightSensor;
-
         #endregion
 
         public RootDevice(ModelType m=ModelType.RT1) {
@@ -333,23 +468,26 @@ namespace JoyRoot
         }
 
         /// <summary>
-        /// Send posted command, not expecting response
+        /// Send command
         /// </summary>
         /// <param name="cmd">command content</param>
-        /// <param name="waitForResponse">if set, will return a response, default is false</param>
-        public async Task<RootCommand> sendCommand(RootCommand cmd, bool waitForResponse = false) {
+        /// <param name="waitForResponse">if set, will wait and return the response, default is false</param>
+        /// <param name="timeout">response timeout</param>
+        public async Task<RootCommand> sendCommand(RootCommand cmd, bool waitForResponse = false, uint timeout = 1000) {
             if (await isAvailible()) {
+                if (waitForResponse && !DicResponse.ContainsKey(cmd.DeviceCommand))
+                    DicResponse[cmd.DeviceCommand] = new BlockingCollection<RootCommand>(1); // make sure queue is created before response recieved.
                 QCommand.Add(cmd);
                 if (waitForResponse)
                 {
                     RootCommand response;
-                    response = QResponse.Take(QResponseCancellationTokenSource.Token);
-                    return response;
+                    BlockingCollection<RootCommand> QResponse = DicResponse[cmd.DeviceCommand];
+                    if (QResponse.TryTake(out response, TimeSpan.FromMilliseconds(timeout))) // try 1s timeout
+                       return response;
                 }
             }
             return null;
         }
-
 
         public void moveForward() {
             _ = sendCommand(RootCommand.moveForwardCmd);
@@ -414,283 +552,55 @@ namespace JoyRoot
             _ = sendCommand(cmd);
         }
 
-        public void playNote(UInt32 frequency, UInt16 duration)
+        /// <summary>
+        /// Convert Note into frequency and send to root
+        /// </summary>
+        /// <param name="note">note name, pitch and octave, such as "C4" "Db2"</param>
+        /// <param name="duration"> default is 500ms (half second)</param>
+        public void playNote(string note, UInt16 duration=500)
         {
-            var cmd = RootCommand.playSoundCmd(frequency, duration);
-            _ = sendCommand(cmd);
-        }
-        #region Response from robot
-
-        #region Events defines
-        // event args
-        public class RootUARTTxEventArgs : EventArgs
-        {
-            RootCommand rootCommand;
-            public RootUARTTxEventArgs(byte[] bytes) : base() {
-                rootCommand = new RootCommand(bytes);
-            }
-        }
-
-        #region Response Args
-        public class RootResponseArgs : RootUARTTxEventArgs
-        {
-            public RootResponseArgs(byte[] bytes) : base(bytes) {
-
-            }
-        }
-        public class RootNavigateFinishResponseArgs : RootResponseArgs
-        {
-            public UInt16 X, Y, Heading;
-            public RootNavigateFinishResponseArgs(byte[] bytes) : base(bytes) {
-                X = BitConverter.ToUInt16(bytes, 3);
-                Y = BitConverter.ToUInt16(bytes, 5);
-                Heading = BitConverter.ToUInt16(bytes, 7);
-            }
-        }
-        public class RootDriveArcFinishResponseArgs : RootResponseArgs
-        {
-            public RootDriveArcFinishResponseArgs(byte[] bytes) : base(bytes) {
-
-            }
-        }
-        public class RootMakerEraserPositionFinishResponseArgs : RootResponseArgs
-        {
-            public enum MarkerEraserPositionType:byte
+            double base_freq;
+            UInt32 frequency;
+            string pitch;
+            uint octave;
+            if (note.Length > 3)
+                note = note.ToUpper().Substring(0, 3) ;// in case note string is longer than 3
+            var match = Regex.Match(note, "([A-G][#b]?)([0-9]?)");
+            if (match.Success)
             {
-                MarkerUpEraserUp = 0,
-                MarkerDownEraserUp = 1,
-                MarkerUpEraserDown =2
-            }
-            public MarkerEraserPositionType position;
-            public RootMakerEraserPositionFinishResponseArgs(byte[] bytes) : base(bytes) {
-                position = (MarkerEraserPositionType)bytes[3];
-            }
-        }
-        public class RootColorSensorGetDataResponseArgs : RootResponseArgs
-        {
-            public UInt16[] Data = new UInt16[8];
-            public RootColorSensorGetDataResponseArgs(byte[] bytes) : base(bytes) {
-                for(int i=0;i<8;i++) {
-                    Data[i] = BitConverter.ToUInt16(bytes, i * 2 + 3);
+                pitch = match.Groups[1].Value;
+                if (match.Groups[2].Value == "")
+                    octave = 4; // default                
+                else
+                    octave = uint.Parse(match.Groups[2].Value);
+
+                base_freq = get_pitch_base_frequency(pitch);
+                if (base_freq > 0)
+                {
+                    frequency = (uint)Math.Floor(base_freq * (2 ^ octave));
+                    var cmd = RootCommand.playSoundCmd(frequency, duration);
+                    _ = sendCommand(cmd, true); // always wait for note finish
                 }
             }
         }
-        public class RootPlayNoteFinishResponseArgs : RootUARTTxEventArgs
-        {
-            public RootPlayNoteFinishResponseArgs(byte[] bytes) : base(bytes) {
 
-            }
-        }
-        public class RootSayPhraseFinishResponseArgs : RootResponseArgs
+        private double get_pitch_base_frequency(string pitch)
         {
-            public RootSayPhraseFinishResponseArgs(byte[] bytes) : base(bytes) { }
-        }
-        public class RootPlaySweepFinishResponseArgs : RootResponseArgs
-        {
-            public RootPlaySweepFinishResponseArgs(byte[] bytes) : base(bytes) {
-
-            }
-        }
-        public class RootGetBatteryLevelResponseArgs : RootResponseArgs
-        {
-            UInt32 timeStamp;
-            UInt16 Voltage;
-            byte Percent;
-            public RootGetBatteryLevelResponseArgs(byte[] bytes) : base(bytes) {
-                timeStamp = BitConverter.ToUInt32(bytes, 0);
-                Voltage = BitConverter.ToUInt16(bytes, 4);
-                Percent = bytes[9];
-            }
-        }
-        public class RootGetVersionResponseArgs : RootResponseArgs
-        {
-            public byte Board, FWMaj, FWMin, HWMaj, HWMin, BootMaj, BootMin, ProtoMaj, ProtoMin;
-            public RootGetVersionResponseArgs(byte[] bytes) : base(bytes) {
-                Board = bytes[3];
-                FWMaj = bytes[4];
-                FWMin = bytes[5];
-                HWMaj = bytes[6];
-                HWMin = bytes[7];
-                BootMaj = bytes[8];
-                BootMin = bytes[9];
-                ProtoMaj = bytes[10];
-                ProtoMin = bytes[11];
-            }
+            //frequence picked from https://pages.mtu.edu/~suits/notefreqs.html
+            if (pitch == "C") return 16.35;
+            else if (pitch == "C#" || pitch == "Db") return 17.32;
+            else if (pitch == "D") return 18.35;
+            else if (pitch == "D#" || pitch == "Eb") return 19.45;
+            else if (pitch == "E") return 20.60;
+            else if (pitch == "F") return 21.83;
+            else if (pitch == "F#" || pitch == "Gb") return 23.12;
+            else if (pitch == "G") return 24.50;
+            else if (pitch == "G#" || pitch == "Gb") return 25.96;
+            else if (pitch == "A") return 27.50;
+            else if (pitch == "A#" || pitch == "Bb") return 29.14;
+            else if (pitch == "B") return 30.87;
+            else return 0;
         }
 
-        public class RootEventArgs : RootUARTTxEventArgs
-        {
-            public UInt32 timeStamp;
-            public RootEventArgs(byte[] bytes) : base(bytes) {
-                timeStamp = BitConverter.ToUInt32(bytes, 3);
-            }
-        }
-        public class RootGetPositionResponseEventArgs : RootEventArgs
-        {
-            public UInt16 X, Y, Heading;
-            public RootGetPositionResponseEventArgs(byte[] bytes):base(bytes) {
-                X = BitConverter.ToUInt16(bytes, 7);
-                Y = BitConverter.ToUInt16(bytes, 9);
-                Heading = BitConverter.ToUInt16(bytes, 11);
-            }
-        }
-        public class RootColorSensorEventArgs : RootEventArgs
-        {
-            public enum RootColorSensorValue : byte
-            {
-                White = 0,
-                Black = 1,
-                Red = 2,
-                Green = 3,
-                Blue = 4
-            }
-            public RootColorSensorValue[] color = new RootColorSensorValue[32];
-            public RootColorSensorEventArgs(byte[] bytes) : base(bytes) {
-                for (int i = 0; i < 16; i++) {
-                    color[i * 2] = (RootColorSensorValue)(bytes[i + 3] >> 4);
-                    color[i * 2 + 1] = (RootColorSensorValue)(bytes[i + 3] & 0xf);
-                }
-            }
-        }
-        public class RootMotorStallEventArgs : RootEventArgs
-        {
-            public enum MotorType : byte
-            {
-                Left=0,
-                Right=1,
-                MarkerEraser=2
-            }
-            public enum MotorStallCauseType:byte
-            {
-                NOStall =0,
-                OverCurrent=1,
-                UnderCurrent=2,
-                UnderSpeed = 3,
-                SaturatedPID =4,
-                TimeOut=5
-            }
-            public MotorType motor;
-            public MotorStallCauseType cause;
-            public RootMotorStallEventArgs(byte[] bytes) : base(bytes) {
-                motor = (MotorType)bytes[7];
-                cause = (MotorStallCauseType)bytes[8];
-            }
-        }
-        public class RootBumperEventArgs: RootEventArgs
-        {
-            public bool LBumper, RBumper;
-            public RootBumperEventArgs(byte[] bytes):base(bytes) {
-                LBumper = (bytes[3] & 0x80) == 0;
-                RBumper = (bytes[3] & 0x40) == 1;
-            }
-        }
-        public class RootLightSensorEventArgs : RootEventArgs
-        {
-            public enum RootLightSensorState : byte
-            {
-                BothEyesDark = 4,
-                RIghtEyeBrighter = 5,
-                LeftEyeBrighter = 6,
-                BothEyesBright = 7
-            }
-            public RootLightSensorState state;
-            public UInt16 leftMillivolts;
-            public UInt16 rightMillivolts;
-            public RootLightSensorEventArgs(byte[] bytes): base(bytes) {
-                state = (RootLightSensorState)bytes[7];
-                leftMillivolts = BitConverter.ToUInt16(bytes, 8);
-                rightMillivolts = BitConverter.ToUInt16(bytes, 10);
-            }
-        }
-        public class RootBatteryLevelEventArgs : RootEventArgs
-        {
-            public UInt16 voltage;
-            public byte percent;
-            public RootBatteryLevelEventArgs(byte[] bytes): base(bytes) {
-                voltage = BitConverter.ToUInt16(bytes, 7);
-                percent = bytes[9];
-            }
-        }
-        public class RootAccelerometerEventArgs : RootEventArgs
-        {
-            public Int16 X, Y, Z;
-            public RootAccelerometerEventArgs(byte[] bytes): base(bytes) {
-                X = BitConverter.ToInt16(bytes, 7);
-                Y = BitConverter.ToInt16(bytes, 9);
-                Z = BitConverter.ToInt16(bytes, 11);
-            }
-        }
-        public class RootTouchSensorEventArgs : RootEventArgs
-        {
-            public bool FrontLeft, FrontRight, RearRight, RearLeft;
-            public RootTouchSensorEventArgs(byte[] bytes):base(bytes) {
-                RearLeft = (bytes[7] & 0x1) != 0;
-                RearRight = (bytes[7] & 0x2) != 0;
-                FrontRight = (bytes[7] & 0x4) != 0;
-                FrontLeft = (bytes[7] & 0x8) != 0;
-            }
-        }
-        public class RootCliffSensorEventArgs : RootEventArgs
-        {
-            public bool cliff;
-            public UInt16 sensorMillivolts, threshold;
-            public RootCliffSensorEventArgs(byte[] bytes):base(bytes) {
-                cliff = bytes[7] == 1;
-                sensorMillivolts = BitConverter.ToUInt16(bytes, 8);
-                threshold = BitConverter.ToUInt16(bytes, 10);
-            }
-        }
-        #endregion
-
-        // delegates
-        public delegate void RootResponseHandler(RootDevice root, RootResponseArgs e);
-        public delegate void RootEventHandler(RootDevice root, RootEventArgs e);
-        public event RootEventHandler RootEvent;
-        public event RootResponseHandler RootResponse;
-        #endregion
-
-        private void RootTXCommandRecieved(GattCharacteristic sender, GattValueChangedEventArgs args) {   
-            byte[] bytes = new byte[args.CharacteristicValue.Length];
-            DataReader.FromBuffer(args.CharacteristicValue).ReadBytes(bytes);
-            var cmd = new RootCommand(bytes);
-            if (cmd.isEvent) { // is Event
-                switch (cmd.Event) {
-                    case RootCommand.RootEventType.BumperEvent:
-                        break;
-                    case RootCommand.RootEventType.LightEvent:
-                        break;
-                    case RootCommand.RootEventType.BatteryLevelEvent:
-                        break;
-                    case RootCommand.RootEventType.TouchSensorEvent:
-                        break;
-                    case RootCommand.RootEventType.CliffEvent:
-                        break;
-                }
-                RootEvent?.Invoke(this, new RootEventArgs(bytes));
-            } else { // is response
-                RootResponseArgs responseArgs;
-                switch (cmd.DeviceCommand) {
-                    case RootCommand.RootDeviceCommand.BatteryGetLevel:
-                        responseArgs = new RootGetBatteryLevelResponseArgs(bytes);
-                        break;
-                    case RootCommand.RootDeviceCommand.GetVersion:
-                        responseArgs = new RootGetVersionResponseArgs(bytes);
-                        break;
-                    //case RootCommand.RootDeviceCommand.MarkerEraserSetPosition:
-                    //    break;
-                    //case RootCommand.RootDeviceCommand.SoundPlayNote:
-                    //    break;
-                    default:
-                        responseArgs = new RootResponseArgs(bytes);
-                        break;
-                }
-
-                QResponse.Add(new RootCommand(bytes));                
-                if (responseArgs != null)
-                    RootResponse?.Invoke(this, responseArgs);
-            }           
-        }
-
-        #endregion
     }
 }

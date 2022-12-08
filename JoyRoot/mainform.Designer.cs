@@ -41,7 +41,10 @@ namespace JoyRoot
             this.btnDown = new System.Windows.Forms.Button();
             this.btnLeft = new System.Windows.Forms.Button();
             this.btnUP = new System.Windows.Forms.Button();
+            this.button1 = new System.Windows.Forms.Button();
+            this.picColorSensor = new System.Windows.Forms.PictureBox();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.picColorSensor)).BeginInit();
             this.SuspendLayout();
             // 
             // btnConnect
@@ -166,11 +169,31 @@ namespace JoyRoot
             this.btnUP.UseVisualStyleBackColor = true;
             this.btnUP.Click += new System.EventHandler(this.btnUP_Click);
             // 
+            // button1
+            // 
+            this.button1.Location = new System.Drawing.Point(484, 400);
+            this.button1.Name = "button1";
+            this.button1.Size = new System.Drawing.Size(112, 35);
+            this.button1.TabIndex = 10;
+            this.button1.Text = "button1";
+            this.button1.UseVisualStyleBackColor = true;
+            this.button1.Click += new System.EventHandler(this.button1_Click);
+            // 
+            // picColorSensor
+            // 
+            this.picColorSensor.Location = new System.Drawing.Point(42, 299);
+            this.picColorSensor.Name = "picColorSensor";
+            this.picColorSensor.Size = new System.Drawing.Size(415, 31);
+            this.picColorSensor.TabIndex = 11;
+            this.picColorSensor.TabStop = false;
+            // 
             // mainform
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(780, 612);
+            this.Controls.Add(this.picColorSensor);
+            this.Controls.Add(this.button1);
             this.Controls.Add(this.listAvailibleRoot);
             this.Controls.Add(this.btnStop);
             this.Controls.Add(this.pictureBox1);
@@ -186,6 +209,7 @@ namespace JoyRoot
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.mainform_FormClosing);
             this.Load += new System.EventHandler(this.mainform_Load);
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.picColorSensor)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -204,6 +228,8 @@ namespace JoyRoot
         private System.Windows.Forms.Button btnStop;
         private System.Windows.Forms.ListView listAvailibleRoot;
         private System.Windows.Forms.ImageList imageList1;
+        private System.Windows.Forms.Button button1;
+        private System.Windows.Forms.PictureBox picColorSensor;
     }
 }
 
