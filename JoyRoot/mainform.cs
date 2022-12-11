@@ -27,6 +27,15 @@ namespace JoyRoot
             listAvailibleRoot.Columns.Add(header);
             listAvailibleRoot.LargeImageList = imageList1;
             listAvailibleRoot.View = View.LargeIcon;
+
+            _ = Task.Run(() =>
+            {
+                while (true)
+                {
+                    UpdateJoystick();
+                    Task.Delay(100);
+                }
+            });
         }
 
         private void mainform_Load(object sender, EventArgs e) {
@@ -42,11 +51,11 @@ namespace JoyRoot
         private void RootDevice_DeviceFound(object sender, EventArgs e) {
             RootDevice root = (RootDevice)sender;
             root.AdvertiseUpdate += RootDevice_AdvertiseUpdate;
-            var newitem = new ListViewItem(" (" + root.Model.ToString() + ")");
-            newitem.Tag = root;
-            newitem.ImageKey = root.Model.ToString();
             listAvailibleRoot.Invoke((MethodInvoker)delegate
             {
+                var newitem = new ListViewItem(" (" + root.Model.ToString() + ")");
+                newitem.Tag = root;
+                newitem.ImageKey = root.Model.ToString();
                 listAvailibleRoot.Items.Add(newitem);
             });
         }
@@ -65,37 +74,54 @@ namespace JoyRoot
 
         private async void connect(RootDevice root)
         {
-            await root.Connect();
-            label1.Invoke((MethodInvoker)delegate {
-                label1.Text = root.SerialNumber;
-            });
-            _ = Task.Run(() =>
+            try
             {
-                while (true)
-                {
-                    UpdateJoystick(); 
-                    System.Threading.Thread.Sleep(100);
-                }
-            });
-            btnUP.Enabled = true;
-            btnDown.Enabled = true;
-            btnLeft.Enabled = true;
-            btnRight.Enabled = true;
-            btnStop.Enabled = true;
-            root.RootEvent += Root_RootEvent;
+                await root.Connect();
+                label1.Text = root.SerialNumber;
+                btnUP.Enabled = true;
+                btnDown.Enabled = true;
+                btnLeft.Enabled = true;
+                btnRight.Enabled = true;
+                btnStop.Enabled = true;
+                root.RootEvent += Root_RootEvent;
+                root.StopNReset();
+            } catch(Exception ex)
+            {
+                Debug.WriteLine(ex.ToString());
+            }
         }
 
         private void Root_RootEvent(RootDevice root, RootDevice.RootEventArgs e)
         {
-            if (e.rootCommand.Event == RootCommand.RootEventType.ColorSensorEvent)
+            if (e.Command.Event == RootCommand.EventTypes.ColorSensorEvent)
             {
-                listAvailibleRoot.Invoke((MethodInvoker)delegate
+                this.Invoke((MethodInvoker)delegate
                 {
-                    if (listAvailibleRoot.SelectedItems.Count == 1)
+                    if (listAvailibleRoot.SelectedItems.Count == 1
+                        && root == (RootDevice)listAvailibleRoot.SelectedItems[0].Tag)
                     {
-                        if ((RootDevice)listAvailibleRoot.SelectedItems[0].Tag == root)
+                        //RootDevice root = (RootDevice)listAvailibleRoot.SelectedItems[0].Tag;
+                        Graphics g;
+                        if (picColorSensor.Image == null)
                         {
-                            updateColorSensor(root);
+                            g = picColorSensor.CreateGraphics();
+                        }
+                        else
+                        {
+                            g = Graphics.FromImage(picColorSensor.Image);
+                        }
+
+                        for (int i = 0; i < root.ColorSensorColors.Length; i++)
+                        {
+                            Color c = Color.Black;
+                            if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.White) c = Color.White;
+                            else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Green) c = Color.Green;
+                            else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Blue) c = Color.Blue;
+                            else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Red) c = Color.Red;
+                            else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Black) c = Color.Black;
+
+                            int wid = picColorSensor.Width / root.ColorSensorColors.Length;
+                            g.FillRectangle(new SolidBrush(c), wid * i, 0, wid, picColorSensor.Height);
                         }
                     }
                 });
@@ -315,9 +341,9 @@ namespace JoyRoot
                             if (item.Checked)
                             {
                                 RootDevice root = (RootDevice)item.Tag;
-                                root.playNote("C4");                                
+                                root.playNote("C4");
                                 root.playNote("D");
-                                root.playNote("E",1000);
+                                root.playNote("E", 1000);                                
                             }
                         }
                     });
@@ -325,48 +351,33 @@ namespace JoyRoot
             }
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        private async void button1_Click(object sender, EventArgs e)
         {
             foreach (ListViewItem item in listAvailibleRoot.Items)
             {
                 if (item.Checked)
                 {
                     RootDevice root = (RootDevice)item.Tag;
-                    root.playNote("C4");
-                    root.playNote("D");
-                    root.playNote("E", 1000);
+                    RootCommand response = await root.sendCommand(new RootCommand(RootCommand.CommandTypes.GetName), true,5000);
+                    if (response != null)
+                        label1.Invoke((MethodInvoker)delegate
+                        {
+                            label1.Text = System.Text.Encoding.Default.GetString(response.Payload);
+                        });
+                    else
+                        label1.Text = "NULL";
                 }
             }
         }
 
-        private void updateColorSensor(RootDevice root)
+        private void picColorSensor_Paint(object sender, PaintEventArgs e)
         {
-            if (listAvailibleRoot.SelectedItems.Count == 1)
-            {
-                if ((RootDevice)listAvailibleRoot.SelectedItems[0].Tag == root)
-                {
-                    Graphics g;
-                    if (picColorSensor.Image == null)
-                    {
-                        g = picColorSensor.CreateGraphics();
-                    } else
-                    {
-                        g = Graphics.FromImage(picColorSensor.Image);
-                    }
-                    for (int i = 0; i < root.ColorSensorColors.Length; i++)
-                    {
-                        Color c = Color.Black;
-                        if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.White) c = Color.White;
-                        else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Green) c = Color.Green;
-                        else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Blue) c = Color.Blue;
-                        else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Red) c = Color.Red;
-                        else if (root.ColorSensorColors[i] == RootDevice.ColorSensorColor.Black) c = Color.Black;
+ 
+        }
 
-                        int wid = picColorSensor.Width / root.ColorSensorColors.Length;
-                        g.FillRectangle(new SolidBrush(c), wid * i, 0, wid, picColorSensor.Height);
-                    }
-                }
-            }
+        private void timer1_Tick(object sender, EventArgs e)
+        {
+            picColorSensor.Refresh();
         }
     }
 }

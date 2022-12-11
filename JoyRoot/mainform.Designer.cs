@@ -43,6 +43,7 @@ namespace JoyRoot
             this.btnUP = new System.Windows.Forms.Button();
             this.button1 = new System.Windows.Forms.Button();
             this.picColorSensor = new System.Windows.Forms.PictureBox();
+            this.timer1 = new System.Windows.Forms.Timer(this.components);
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.picColorSensor)).BeginInit();
             this.SuspendLayout();
@@ -186,6 +187,12 @@ namespace JoyRoot
             this.picColorSensor.Size = new System.Drawing.Size(415, 31);
             this.picColorSensor.TabIndex = 11;
             this.picColorSensor.TabStop = false;
+            this.picColorSensor.Paint += new System.Windows.Forms.PaintEventHandler(this.picColorSensor_Paint);
+            // 
+            // timer1
+            // 
+            this.timer1.Enabled = true;
+            this.timer1.Tick += new System.EventHandler(this.timer1_Tick);
             // 
             // mainform
             // 
@@ -230,6 +237,7 @@ namespace JoyRoot
         private System.Windows.Forms.ImageList imageList1;
         private System.Windows.Forms.Button button1;
         private System.Windows.Forms.PictureBox picColorSensor;
+        private System.Windows.Forms.Timer timer1;
     }
 }
 
